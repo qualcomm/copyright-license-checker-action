@@ -1,0 +1,16 @@
+name: 'Run Copyright and license check with Patch File'
+description: 'A GitHub Action to run a Copyright and license checker with a patch file'
+inputs:
+  patch_file:
+    description: 'The patch file to apply'
+    required: true
+    default: 'patch_file.patch'
+runs:
+  using: 'docker'
+  image: 'python:3.8-slim'
+  steps:
+    - run: pip install -r requirements.txt
+    - run: python main.py ${{ inputs.patch_file }}
+branding:
+  icon: 'python'
+  color: 'blue'

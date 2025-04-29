@@ -1,0 +1,23 @@
+name: Run Python Script with Patch File from PR
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  run-python-script:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Generate patch file
+      run: |
+        git diff > patch_file.patch
+
+    - name: Run Python Script Action
+      uses: targoy-qti/copyright-license-checker-action@main
+      with:
+        patch_file: 'patch_file.patch'

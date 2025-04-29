@@ -1,0 +1,87 @@
+{
+    "BSD-3-Clause": {
+        "spdx": "SPDX-License-Identifier: BSD-3-Clause",
+        "phrases": [
+            "neither the name of the",
+            "redistribution and use in source and binary forms, with or without modification, are permitted",
+            "this list of conditions and the following disclaimer"
+        ]
+    },
+    "MIT": {
+        "spdx": "SPDX-License-Identifier: MIT",
+        "phrases": [
+            "permission is hereby granted, free of charge, to any person obtaining a copy",
+            "the software is provided \"as is\", without warranty of any kind"
+        ]
+    },
+    "Apache-2.0": {
+        "spdx": "SPDX-License-Identifier: Apache-2.0",
+        "phrases": [
+            "licensed under the apache license, version 2.0",
+            "you may obtain a copy of the license at",
+            "unless required by applicable law or agreed to in writing"
+        ]
+    },
+    "GPL-3.0-or-later": {
+        "spdx": "SPDX-License-Identifier: GPL-3.0-or-later",
+        "phrases": [
+            "gnu general public license for more details",
+            "version 3 of the license, or (at your option) any later version",
+            "this program is free software: you can redistribute it and/or modify"
+        ]
+    },
+    "MPL-2.0": {
+        "spdx": "SPDX-License-Identifier: MPL-2.0",
+        "phrases": [
+            "mozilla public license, version 2.0",
+            "if a copy of the mpl was not distributed with this file"
+        ]
+    },
+    "EPL-2.0": {
+        "spdx": "SPDX-License-Identifier: EPL-2.0",
+        "phrases": [
+            "this program and the accompanying materials are made available under the terms of the eclipse public license"
+        ]
+    },
+    "GPL-2.0-or-later": {
+        "spdx": "SPDX-License-Identifier: GPL-2.0-or-later",
+        "phrases": [
+            "This program is free software; you can redistribute it and/or",
+            "modify version 2 of the license, or (at your option) any later version"
+        ]
+    },
+    "LGPL-2.1-or-later": {
+        "spdx": "SPDX-License-Identifier: LGPL-2.1-or-later",
+        "phrases": [
+            "gnu lesser general public license for more details",
+            "version 2.1 of the license, or (at your option) any later version"
+        ]
+    },
+    "BSD-2-Clause": {
+        "spdx": "SPDX-License-Identifier: BSD-2-Clause",
+        "phrases": [
+            "redistribution and use in source and binary forms, with or without modification, are permitted",
+            "this list of conditions and the following disclaimer"
+        ]
+    },
+    "CC0-1.0": {
+        "spdx": "SPDX-License-Identifier: CC0-1.0",
+        "phrases": [
+            "to the extent possible under law, the person who associated cc0 with this work has waived all copyright and related or neighboring rights",
+            "you can copy, modify, distribute and perform the work, even for commercial purposes, all without asking permission"
+        ]
+    },
+    "Unlicense": {
+        "spdx": "SPDX-License-Identifier: Unlicense",
+        "phrases": [
+            "this is free and unencumbered software released into the public domain",
+            "anyone is free to copy, modify, publish, use, compile"
+        ]
+    },
+    "Public-Domain": {
+        "spdx": "SPDX-License-Identifier: Public-Domain",
+        "phrases": [
+            "the author dedicates any and all copyright interest"
+        ]
+    }
+}
