@@ -10,8 +10,10 @@ runs:
   steps:
     - name: Install dependencies
       run: pip install -r requirements.txt
+      shell: bash
     - name: Run checker
       run: python main.py ${{ inputs.patch_file }}
+      shell: bash
 branding:
   icon: 'python'
   color: 'blue'
