@@ -19,11 +19,6 @@ runs:
         pip install pip-tools
       shell: bash
 
-    - name: Compile requirements with hashes
-      run: |
-        pip-compile requirements.in
-      shell: bash
-
     - name: Install dependencies
       run: pip install -r requirements.txt
       shell: bash

@@ -1,4 +1,4 @@
-name: Run Python Script with Patch File from PR
+name: Run Copyright and license check from PR
 
 on:
   pull_request:
@@ -16,6 +16,13 @@ jobs:
     - name: Generate patch file
       run: |
         git diff > patch_file.patch
+
+
+    - name: Print patch file content
+      run: |
+        cat patch_file.patch
+      shell: bash
+
 
     - name: Run Python Script Action
       uses: targoy-qti/copyright-license-checker-action@main
