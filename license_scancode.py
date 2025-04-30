@@ -103,8 +103,6 @@ class LicenseChecker:
         flagged_files = {}
         for change in source_files:
             added_licenses, deleted_licenses = self.detect_license(change['content'])
-            print (change['file_path'])
-            print ('--------------')
             print (added_licenses)
             print ('--------------')
             print (deleted_licenses)
