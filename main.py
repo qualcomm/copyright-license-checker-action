@@ -3,6 +3,7 @@ import logging
 import sys
 import os
 from dotenv import load_dotenv
+import config
 from patch import Patch
 from license_scancode import LicenseChecker
 from copyright_checker import CopyrightChecker
@@ -16,13 +17,20 @@ permissive_licenses = ["BSD-3-Clause", "MIT", "Apache-2.0", "BSD-3-Clause-Clear"
 copyleft_licenses = ["GPL-3.0", "AGPL-3.0", "LGPL-3.0", "GPL-2.0", "GPL-2.0+"]
 
 
-def get_license(repo_name):
-    # Load the JSON data from the file
-    with open('config.json', 'r') as file:
-        data = json.load(file)
+# def get_license(repo_name):
+#     # Load the JSON data from the file
+#     with open('config.json', 'r') as file:
+#         data = json.load(file)
 
-    # Search for the repository name and print its license
-    for project in data['projects']:
+#     # Search for the repository name and print its license
+#     for project in data['projects']:
+#         if project['PROJECT_NAME'] == repo_name:
+#             return project['MARKINGS']
+#     return None
+
+def get_license(repo_name):
+    # Search for the repository name and return its license
+    for project in config.data['projects']:
         if project['PROJECT_NAME'] == repo_name:
             return project['MARKINGS']
     return None
