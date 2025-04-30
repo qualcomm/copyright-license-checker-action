@@ -24,7 +24,7 @@ runs:
       shell: bash
 
     - name: Run checker
-      run: python main.py ${{ inputs.patch_file }}
+      run: python "${{ github.action_path }}/main.py" "${{ inputs.patch_file }}"
       shell: bash
 
 branding:
