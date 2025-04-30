@@ -43,16 +43,24 @@ def main():
     load_dotenv()
 
     patch = Patch(sys.argv[1])
+    print (patch)
+    print ('Above is the pATCH CONTENT...')
+    print ('------------------------------------------')
     #TODO repo_name will be sent by the GH action event
     repo_name = "meta-qcom-robotics" # Testing
     #repo_name = os.environ['PROJECT_NAME']
     license = get_license(repo_name)
+    print (license)
+    print ('--------------------------')
     if license in permissive_licenses:
         allowed_licenses = permissive_licenses
     elif license in copyleft_licenses:
         allowed_licenses = copyleft_licenses
     else:
         allowed_licenses = []
+    
+    print (allowed_licenses)
+    print ('-------------------')
     
 
     license_checker = LicenseChecker(patch, repo_name, allowed_licenses)

@@ -15,12 +15,6 @@ class LicenseChecker:
         self.patch = patch
         self.repo = repo
         self.permissive_licenses = permissive_licenses
-        # self.marking_text = self.load_marking_text(marking_text_file)
-
-    # @staticmethod
-    # def load_marking_text(file_path):
-    #     with open(file_path, 'r') as f:
-    #         return json.load(f)
 
     @staticmethod
     def normalize(str_):
@@ -103,10 +97,18 @@ class LicenseChecker:
         global log_prefix
         source_files = [change for change in self.patch.changes
                         if change['file_type'] == 'source']
+        print (source_files)
+        print ('--------------')
 
         flagged_files = {}
         for change in source_files:
             added_licenses, deleted_licenses = self.detect_license(change['content'])
+            print (change['file_path'])
+            print ('--------------')
+            print (added_licenses)
+            print ('--------------')
+            print (deleted_licenses)
+            print ('--------------')
 
             issues = []
             if change['change_type'] == 'MODIFIED' or change['change_type'] == 'ADDED':
