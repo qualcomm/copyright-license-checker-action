@@ -55,7 +55,7 @@ def main():
         allowed_licenses = []
     
 
-    license_checker = LicenseChecker(patch, repo_name, allowed_licenses, 'marking_texts.json')
+    license_checker = LicenseChecker(patch, repo_name, allowed_licenses)
     copyright_checker = CopyrightChecker(patch)
 
     flagged_license_files = license_checker.run()

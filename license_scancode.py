@@ -11,16 +11,16 @@ warnings.filterwarnings("ignore", message="Libmagic magic database not found")
 log_prefix = "< file license check >"
 
 class LicenseChecker:
-    def __init__(self, patch, repo, permissive_licenses, marking_text_file):
+    def __init__(self, patch, repo, permissive_licenses):
         self.patch = patch
         self.repo = repo
         self.permissive_licenses = permissive_licenses
-        self.marking_text = self.load_marking_text(marking_text_file)
+        # self.marking_text = self.load_marking_text(marking_text_file)
 
-    @staticmethod
-    def load_marking_text(file_path):
-        with open(file_path, 'r') as f:
-            return json.load(f)
+    # @staticmethod
+    # def load_marking_text(file_path):
+    #     with open(file_path, 'r') as f:
+    #         return json.load(f)
 
     @staticmethod
     def normalize(str_):
