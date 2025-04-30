@@ -80,7 +80,9 @@ class LicenseChecker:
 
         # Normalize added and deleted lines
         added_text = self.normalize(" ".join(added_lines))
+        print (added_text)
         deleted_text = self.normalize(" ".join(deleted_lines))
+        print (deleted_text)
 
         added_licenses = []
         deleted_licenses = []
