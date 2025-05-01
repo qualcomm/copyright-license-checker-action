@@ -1,8 +1,5 @@
-import json
 import logging
 import sys
-import os
-from dotenv import load_dotenv
 import config
 from patch import Patch
 from license_scancode import LicenseChecker
@@ -14,19 +11,9 @@ log_prefix = "< file license/copyright check >"
 # Define a dictionary of permissive licenses
 
 permissive_licenses = ["BSD-3-Clause", "MIT", "Apache-2.0", "BSD-3-Clause-Clear"]
-copyleft_licenses = ["GPL-3.0", "AGPL-3.0", "LGPL-3.0", "GPL-2.0", "GPL-2.0+"]
+copyleft_licenses = ["GPL-3.0", "AGPL-3.0", "LGPL-3.0", "GPL-2.0", "GPL-2.0+",
+                     "GPL-2.0-only WITH Linux-syscall-note", "GPL-2.0-only"]
 
-
-# def get_license(repo_name):
-#     # Load the JSON data from the file
-#     with open('config.json', 'r') as file:
-#         data = json.load(file)
-
-#     # Search for the repository name and print its license
-#     for project in data['projects']:
-#         if project['PROJECT_NAME'] == repo_name:
-#             return project['MARKINGS']
-#     return None
 
 def get_license(repo_name):
     # Search for the repository name and return its license
@@ -40,18 +27,11 @@ def main():
     # clamp chatty logging from license_identifier
     logging.basicConfig(level=logging.WARNING)
 
-    load_dotenv()
-
     patch = Patch(sys.argv[1])
-    print (patch)
-    print ('Above is the pATCH CONTENT...')
-    print ('------------------------------------------')
     #TODO repo_name will be sent by the GH action event
-    repo_name = "meta-qcom-robotics" # Testing
+    repo_name = "meta-qcom-kernel" # Testing
     #repo_name = os.environ['PROJECT_NAME']
     license = get_license(repo_name)
-    print (license)
-    print ('--------------------------')
     if license in permissive_licenses:
         allowed_licenses = permissive_licenses
     elif license in copyleft_licenses:
@@ -59,10 +39,6 @@ def main():
     else:
         allowed_licenses = []
     
-    print (allowed_licenses)
-    print ('-------------------')
-    
-
     license_checker = LicenseChecker(patch, repo_name, allowed_licenses)
     copyright_checker = CopyrightChecker(patch)
 
