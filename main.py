@@ -53,7 +53,7 @@ def main():
 
     patch = Patch(sys.argv[1])
     #TODO repo_name will be sent by the GH action event
-    repo_name = "meta-qcom-kernel" # Testing
+    repo_name = sys.argv[2]
     #repo_name = os.environ['PROJECT_NAME']
     license = get_license(repo_name)
     if license in permissive_licenses:
