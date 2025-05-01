@@ -9,8 +9,8 @@ data = {
             "MARKINGS": "GPL-2.0"
         },
         {
-            "PROJECT_NAME": "project3",
-            "MARKINGS": "Apache-2.0"
+            "PROJECT_NAME": "targoy-qti/qli_test_repo",
+            "MARKINGS": "LGPL-3.0"
         }
     ]
 }
