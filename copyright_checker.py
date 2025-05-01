@@ -1,7 +1,5 @@
 import re
 
-log_prefix = "< file copyright check >"
-
 class CopyrightChecker:
     def __init__(self, patch):
         self.patch = patch
@@ -14,13 +12,11 @@ class CopyrightChecker:
 
 
     def run(self):
-        global log_prefix
         source_files = [change for change in self.patch.changes
                         if change['file_type'] == 'source']
 
         flagged_files = {}
         for change in source_files:
-            # line = log_prefix + change['path_name']
             added_copyrights, deleted_copyrights = self.detect_copyright_changes(change['content'])
 
             issues = []

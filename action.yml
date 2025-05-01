@@ -5,6 +5,10 @@ inputs:
     description: 'The patch file to apply'
     required: true
     default: 'patch_file.patch'
+  repo_name:
+    description: 'The name of the repository'
+    required: true
+
 runs:
   using: 'composite'
   steps:
@@ -24,7 +28,7 @@ runs:
       shell: bash
 
     - name: Run checker
-      run: python "${{ github.action_path }}/main.py" "${{ inputs.patch_file }}"
+      run: python "${{ github.action_path }}/main.py" "${{ inputs.patch_file }}" "${{ inputs.repo_name }}"
       shell: bash
 
 branding:

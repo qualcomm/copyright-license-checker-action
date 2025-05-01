@@ -5,12 +5,12 @@ data = {
             "MARKINGS": "BSD-3-Clause"
         },
         {
-            "PROJECT_NAME": "project2",
-            "MARKINGS": "MIT"
+            "PROJECT_NAME": "meta-qcom-kernel",
+            "MARKINGS": "GPL-2.0"
         },
         {
-            "PROJECT_NAME": "project3",
-            "MARKINGS": "Apache-2.0"
+            "PROJECT_NAME": "targoy-qti/qli_test_repo",
+            "MARKINGS": "LGPL-3.0"
         }
     ]
 }

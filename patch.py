@@ -14,6 +14,7 @@ class Patch:
         # Split patch into meta (git commit, summary) vs. code content
         file_delimiter_regex = r'^diff .* b\/(?P<file_name>.*)$'
         r = re.split(file_delimiter_regex, self.patch_content, flags=re.MULTILINE)
+        # Can be used to filter out the patches for the QUIC authored commits only
         patch_meta = r[0]
         patch_content = r[1:]
         files_changes = list(zip(patch_content[::2], patch_content[1::2]))

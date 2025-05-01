@@ -1,8 +1,5 @@
-import json
 import logging
 import sys
-import os
-from dotenv import load_dotenv
 import config
 from patch import Patch
 from license_scancode import LicenseChecker
@@ -14,19 +11,9 @@ log_prefix = "< file license/copyright check >"
 # Define a dictionary of permissive licenses
 
 permissive_licenses = ["BSD-3-Clause", "MIT", "Apache-2.0", "BSD-3-Clause-Clear"]
-copyleft_licenses = ["GPL-3.0", "AGPL-3.0", "LGPL-3.0", "GPL-2.0", "GPL-2.0+"]
+copyleft_licenses = ["GPL-3.0", "AGPL-3.0", "LGPL-3.0", "GPL-2.0", "GPL-2.0+",
+                     "GPL-2.0-only WITH Linux-syscall-note", "GPL-2.0-only"]
 
-
-# def get_license(repo_name):
-#     # Load the JSON data from the file
-#     with open('config.json', 'r') as file:
-#         data = json.load(file)
-
-#     # Search for the repository name and print its license
-#     for project in data['projects']:
-#         if project['PROJECT_NAME'] == repo_name:
-#             return project['MARKINGS']
-#     return None
 
 def get_license(repo_name):
     # Search for the repository name and return its license
@@ -35,23 +22,38 @@ def get_license(repo_name):
             return project['MARKINGS']
     return None
 
+def beautify_output(flagged_files, log_prefix):
+    output = []
+    output.append(f"{log_prefix} ┌───────────────────────────────────────────┐")
+    output.append(f"{log_prefix} │           **Flagged Files Report**         │")
+    output.append(f"{log_prefix} ├───────────────────────────────────────────┤")
+    for file, issues in flagged_files.items():
+        output.append(f"{log_prefix} │ 📄 **File:** {file}")
+        if issues['license_issues']:
+            output.append(f"{log_prefix} │ 🚨 **License issues detected:**")
+            for issue in issues['license_issues']:
+                output.append(f"{log_prefix} │   - {issue}")
+        if issues['copyright_issues']:
+            output.append(f"{log_prefix} │ ⚠️ **Copyright issues detected:**")
+            for issue in issues['copyright_issues']:
+                output.append(f"{log_prefix} │   - {issue}")
+        if not issues['license_issues'] and not issues['copyright_issues']:
+            output.append(f"{log_prefix} │ ✅ **No issues detected**")
+    output.append(f"{log_prefix} └───────────────────────────────────────────┘")
+
+    # Print the entire output block
+    print("\n".join(output))
+
+    sys.exit(len(flagged_files))
+
 
 def main():
     # clamp chatty logging from license_identifier
     logging.basicConfig(level=logging.WARNING)
 
-    load_dotenv()
-
     patch = Patch(sys.argv[1])
-    print (patch)
-    print ('Above is the pATCH CONTENT...')
-    print ('------------------------------------------')
-    #TODO repo_name will be sent by the GH action event
-    repo_name = "meta-qcom-robotics" # Testing
-    #repo_name = os.environ['PROJECT_NAME']
+    repo_name = sys.argv[2]
     license = get_license(repo_name)
-    print (license)
-    print ('--------------------------')
     if license in permissive_licenses:
         allowed_licenses = permissive_licenses
     elif license in copyleft_licenses:
@@ -59,10 +61,6 @@ def main():
     else:
         allowed_licenses = []
     
-    print (allowed_licenses)
-    print ('-------------------')
-    
-
     license_checker = LicenseChecker(patch, repo_name, allowed_licenses)
     copyright_checker = CopyrightChecker(patch)
 
@@ -80,20 +78,7 @@ def main():
             flagged_files[file] = {'license_issues': [], 'copyright_issues': issues}
 
     # Print results
-    for file, issues in flagged_files.items():
-        print(f"{log_prefix} {file}")
-        if issues['license_issues']:
-            print(f"{log_prefix} - License issues detected:")
-            for issue in issues['license_issues']:
-                print(f"{log_prefix}   - {issue}")
-        if issues['copyright_issues']:
-            print(f"{log_prefix} - Copyright issues detected:")
-            for issue in issues['copyright_issues']:
-                print(f"{log_prefix}   - {issue}")
-        if not issues['license_issues'] and not issues['copyright_issues']:
-            print(f"{log_prefix} - No issues detected")
-
-    sys.exit(len(flagged_files))
+    beautify_output(flagged_files, log_prefix)
 
 if __name__ == '__main__':
     main()
