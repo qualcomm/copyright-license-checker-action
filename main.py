@@ -22,6 +22,30 @@ def get_license(repo_name):
             return project['MARKINGS']
     return None
 
+def beautify_output(flagged_files, log_prefix):
+    output = []
+    output.append(f"{log_prefix} ┌───────────────────────────────────────────┐")
+    output.append(f"{log_prefix} │           **Flagged Files Report**         │")
+    output.append(f"{log_prefix} ├───────────────────────────────────────────┤")
+    for file, issues in flagged_files.items():
+        output.append(f"{log_prefix} │ 📄 **File:** {file}")
+        if issues['license_issues']:
+            output.append(f"{log_prefix} │ 🚨 **License issues detected:**")
+            for issue in issues['license_issues']:
+                output.append(f"{log_prefix} │   - {issue}")
+        if issues['copyright_issues']:
+            output.append(f"{log_prefix} │ ⚠️ **Copyright issues detected:**")
+            for issue in issues['copyright_issues']:
+                output.append(f"{log_prefix} │   - {issue}")
+        if not issues['license_issues'] and not issues['copyright_issues']:
+            output.append(f"{log_prefix} │ ✅ **No issues detected**")
+    output.append(f"{log_prefix} └───────────────────────────────────────────┘")
+
+    # Print the entire output block
+    print("\n".join(output))
+
+    sys.exit(len(flagged_files))
+
 
 def main():
     # clamp chatty logging from license_identifier
@@ -56,20 +80,7 @@ def main():
             flagged_files[file] = {'license_issues': [], 'copyright_issues': issues}
 
     # Print results
-    for file, issues in flagged_files.items():
-        print(f"{log_prefix} {file}")
-        if issues['license_issues']:
-            print(f"{log_prefix} - License issues detected:")
-            for issue in issues['license_issues']:
-                print(f"{log_prefix}   - {issue}")
-        if issues['copyright_issues']:
-            print(f"{log_prefix} - Copyright issues detected:")
-            for issue in issues['copyright_issues']:
-                print(f"{log_prefix}   - {issue}")
-        if not issues['license_issues'] and not issues['copyright_issues']:
-            print(f"{log_prefix} - No issues detected")
-
-    sys.exit(len(flagged_files))
+    beautify_output(flagged_files, log_prefix)
 
 if __name__ == '__main__':
     main()
