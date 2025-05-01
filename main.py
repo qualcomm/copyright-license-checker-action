@@ -52,9 +52,7 @@ def main():
     logging.basicConfig(level=logging.WARNING)
 
     patch = Patch(sys.argv[1])
-    #TODO repo_name will be sent by the GH action event
     repo_name = sys.argv[2]
-    #repo_name = os.environ['PROJECT_NAME']
     license = get_license(repo_name)
     if license in permissive_licenses:
         allowed_licenses = permissive_licenses
