@@ -95,8 +95,6 @@ class LicenseChecker:
 
         for change in source_files:
             added_licenses, deleted_licenses = self.detect_license(change['content'])
-            # if not added_licenses and not deleted_licenses:
-            #     continue
             issues = []
             if change['change_type'] == 'MODIFIED' or change['change_type'] == 'ADDED':
                 if added_licenses and deleted_licenses and set(added_licenses) != set(deleted_licenses):
