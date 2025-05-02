@@ -10,7 +10,7 @@ data = {
         },
         {
             "PROJECT_NAME": "targoy-qti/qli_test_repo",
-            "MARKINGS": "LGPL-3.0"
+            "MARKINGS": "BSD-3-Clause"
         }
     ]
 }
