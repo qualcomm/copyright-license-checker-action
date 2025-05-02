@@ -77,7 +77,6 @@ def main():
         else:
             flagged_files[file] = {'license_issues': [], 'copyright_issues': issues}
 
-    # Print results
     beautify_output(flagged_files, log_prefix)
 
 if __name__ == '__main__':
