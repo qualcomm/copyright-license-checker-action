@@ -72,6 +72,19 @@ class LicenseChecker:
 
         return added_licenses, deleted_licenses
 
+    def is_source_file(self, file_name):
+        # Define common source file extensions
+        source_file_extensions = [
+            '.c', '.cpp', '.h', '.hpp', '.java', '.py', '.js', '.ts', '.rb', '.go', '.swift', '.kt', '.kts'
+        ]
+        
+        # Check if the file extension is in the list of source file extensions
+        for ext in source_file_extensions:
+            if file_name.endswith(ext):
+                return True
+        return False
+
+
     def run(self):
         source_files = [change for change in self.patch.changes
                         if change['file_type'] == 'source']
@@ -82,8 +95,6 @@ class LicenseChecker:
 
         for change in source_files:
             added_licenses, deleted_licenses = self.detect_license(change['content'])
-            if not added_licenses and not deleted_licenses:
-                continue
             issues = []
             if change['change_type'] == 'MODIFIED' or change['change_type'] == 'ADDED':
                 if added_licenses and deleted_licenses and set(added_licenses) != set(deleted_licenses):
@@ -96,6 +107,11 @@ class LicenseChecker:
                     flagged_files[change['path_name']] = issues
                 else:
                     pass
+            if change['change_type'] == 'ADDED':
+                if not added_licenses and self.is_source_file(change['path_name']):
+                    issues.append(f"No license added for source file: {change['path_name']}")
+                    if issues:
+                        flagged_files[change['path_name']] = issues
 
         return flagged_files
 
