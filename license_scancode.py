@@ -5,6 +5,8 @@ import subprocess
 import warnings
 warnings.filterwarnings("ignore", message="Libmagic magic database not found")
 
+from patch import Patch
+
 class LicenseChecker:
     """
     Class to check for licenses in a patch file.

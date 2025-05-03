@@ -1,4 +1,5 @@
 import re
+from patch import Patch
 
 class CopyrightChecker:
     """
