@@ -27,7 +27,8 @@ COPIRIGHT_LICENSES = [
 
 def get_license(repo_name: str) -> str:
     """
-    Search for the repository name and return its license.
+    Search for the repository name in the config file and return its license.
+    the repository name is not found, return the default license (BSD-3-Clause-Clear).
 
     Args:
         repo_name (str): The name of the repository.
@@ -38,7 +39,9 @@ def get_license(repo_name: str) -> str:
     for project in config.data['projects']:
         if project['PROJECT_NAME'] == repo_name:
             return project['MARKINGS']
-    return None
+    # Return the default license if the repository name is not found
+    return "BSD-3-Clause-Clear"
+
 
 def beautify_output(flagged_files: dict, log_prefix: str) -> None:
     """
