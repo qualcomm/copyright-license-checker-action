@@ -13,8 +13,8 @@ data = {
             "MARKINGS": "GPL-2.0"
         },
         {
-            "PROJECT_NAME": "project3",
-            "MARKINGS": "BSD-3-Clause"
+            "PROJECT_NAME": "targoy-qti/qli_test_repo",
+            "MARKINGS": "MPL 2.0"
         }
     ]
 }

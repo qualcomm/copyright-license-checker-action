@@ -89,7 +89,7 @@ def main() -> None:
     elif license in COPIRIGHT_LICENSES:
         allowed_licenses = COPIRIGHT_LICENSES
     else:
-        allowed_licenses = []
+        allowed_licenses = [license]
 
     license_checker = LicenseChecker(patch, repo_name, allowed_licenses)
     copyright_checker = CopyrightChecker(patch)
