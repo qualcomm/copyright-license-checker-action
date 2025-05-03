@@ -43,18 +43,22 @@ def get_license(repo_name: str) -> str:
     return "BSD-3-Clause-Clear"
 
 
-def beautify_output(flagged_files: dict, log_prefix: str) -> None:
+def beautify_output(flagged_files: dict, license: str, log_prefix: str) -> None:
     """
     Print the flagged files report in a beautified format.
 
     Args:
         flagged_files (dict): A dictionary of flagged files and their issues.
+        license (str) : The default/top level license of the repo
         log_prefix (str): The prefix to use for logging.
     """
     output = []
     output.append(f"{log_prefix} ┌───────────────────────────────────────────┐")
     output.append(f"{log_prefix} │           **Flagged Files Report**         │")
     output.append(f"{log_prefix} ├───────────────────────────────────────────┤")
+    output.append(f"{log_prefix} │ Top level/default license of the repo is {license}")
+    output.append(f"{log_prefix} ├───────────────────────────────────────────┤")
+
     for file, issues in flagged_files.items():
         output.append(f"{log_prefix} │ 📄 **File:** {file}")
         if issues['license_issues']:
@@ -107,7 +111,7 @@ def main() -> None:
         else:
             flagged_files[file] = {'license_issues': [], 'copyright_issues': issues}
 
-    beautify_output(flagged_files, LOG_PREFIX)
+    beautify_output(flagged_files, license, LOG_PREFIX)
 
 if __name__ == '__main__':
     main()
