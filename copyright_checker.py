@@ -1,18 +1,52 @@
 import re
 
 class CopyrightChecker:
-    def __init__(self, patch):
+    """
+    Class to check for copyright changes in a patch file.
+    """
+
+    def __init__(self, patch: Patch) -> None:
+        """
+        Initialize the CopyrightChecker object.
+
+        Args:
+            patch (Patch): The patch file to check.
+        """
         self.patch = patch
 
-    def normalize_string(self, s):
+    def normalize_string(self, s: str) -> str:
+        """
+        Normalize a string by removing non-alphabetic characters.
+
+        Args:
+            s (str): The string to normalize.
+
+        Returns:
+            str: The normalized string.
+        """
         return ''.join(filter(str.isalpha, s))
 
-    def detect_copyright_changes(self, content):
+    def detect_copyright_changes(self, content: str) -> tuple:
+        """
+        Detect copyright changes in the content.
+
+        Args:
+            content (str): The content to check.
+
+        Returns:
+            tuple: A tuple of added and deleted copyrights.
+        """
         added_copyrights = [(line[1:], self.normalize_string(line[1:])) for line in re.findall(r"^\+.*Copyright.*", content, re.MULTILINE)]
         deleted_copyrights = [(line[1:], self.normalize_string(line[1:])) for line in re.findall(r"^-.*Copyright.*", content, re.MULTILINE)]
         return added_copyrights, deleted_copyrights
 
-    def run(self):
+    def run(self) -> dict:
+        """
+        Run the copyright checker.
+
+        Returns:
+            dict: A dictionary of flagged files.
+        """
         source_files = [change for change in self.patch.changes
                         if change['file_type'] == 'source']
 

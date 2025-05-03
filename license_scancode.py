@@ -1,19 +1,38 @@
-import re
 import json
 import tempfile
 import subprocess
-
 
 import warnings
 warnings.filterwarnings("ignore", message="Libmagic magic database not found")
 
 class LicenseChecker:
-    def __init__(self, patch, repo, permissive_licenses):
+    """
+    Class to check for licenses in a patch file.
+    """
+
+    def __init__(self, patch: Patch, repo: str, permissive_licenses: list) -> None:
+        """
+        Initialize the LicenseChecker object.
+
+        Args:
+            patch (Patch): The patch file to check.
+            repo (str): The repository name.
+            permissive_licenses (list): A list of permissive licenses.
+        """
         self.patch = patch
         self.repo = repo
         self.permissive_licenses = permissive_licenses
 
-    def is_license_permissive(self, scancode_license):
+    def is_license_permissive(self, scancode_license: str) -> bool:
+        """
+        Check if a license is permissive.
+
+        Args:
+            scancode_license (str): The license to check.
+
+        Returns:
+            bool: True if the license is permissive, False otherwise.
+        """
         # Split the scancode license string by 'AND' and 'OR'
         licenses = [license.strip() for license in scancode_license.replace('AND', 'OR').split('OR')]
         # Check if any license is not in the permissive licenses list
@@ -22,11 +41,20 @@ class LicenseChecker:
                 return False
         return True
 
-    def detect_license_with_scancode(self, content):
+    def detect_license_with_scancode(self, content: str) -> list:
+        """
+        Detect licenses using scancode.
+
+        Args:
+            content (str): The content to check.
+
+        Returns:
+            list: A list of licenses.
+        """
         with tempfile.NamedTemporaryFile(mode='w+', suffix='.txt', delete=False) as tmp_file:
             tmp_file.write(content)
             tmp_path = tmp_file.name
-    
+
         output_file = tmp_path + '_scancode.json'
         subprocess.run([
             'scancode',
@@ -37,7 +65,6 @@ class LicenseChecker:
             tmp_path
         ], check=True)
 
-    
         with open(output_file, 'r') as f:
             data = json.load(f)
             licenses = []
@@ -46,7 +73,16 @@ class LicenseChecker:
                     licenses = result['license_detections'][0]['license_expression_spdx']
                 return licenses
 
-    def detect_license(self, content):
+    def detect_license(self, content: str) -> tuple:
+        """
+        Detect licenses in the content.
+
+        Args:
+            content (str): The content to check.
+
+        Returns:
+            tuple: A tuple of added and deleted licenses.
+        """
         added_lines = []
         deleted_lines = []
 
@@ -72,20 +108,34 @@ class LicenseChecker:
 
         return added_licenses, deleted_licenses
 
-    def is_source_file(self, file_name):
+    def is_source_file(self, file_name: str) -> bool:
+        """
+        Check if a file is a source file.
+
+        Args:
+            file_name (str): The file name.
+
+        Returns:
+            bool: True if the file is a source file, False otherwise.
+        """
         # Define common source file extensions
         source_file_extensions = [
             '.c', '.cpp', '.h', '.hpp', '.java', '.py', '.js', '.ts', '.rb', '.go', '.swift', '.kt', '.kts'
         ]
-        
+
         # Check if the file extension is in the list of source file extensions
         for ext in source_file_extensions:
             if file_name.endswith(ext):
                 return True
         return False
 
+    def run(self) -> dict:
+        """
+        Run the license checker.
 
-    def run(self):
+        Returns:
+            dict: A dictionary of flagged files.
+        """
         source_files = [change for change in self.patch.changes
                         if change['file_type'] == 'source']
 
@@ -114,4 +164,3 @@ class LicenseChecker:
                         flagged_files[change['path_name']] = issues
 
         return flagged_files
-

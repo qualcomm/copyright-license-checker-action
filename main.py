@@ -5,24 +5,49 @@ from patch import Patch
 from license_scancode import LicenseChecker
 from copyright_checker import CopyrightChecker
 
-log_prefix = "< file license/copyright check >"
-
+LOG_PREFIX = "< file license/copyright check >"
 
 # Define a dictionary of permissive licenses
+PERMISSIVE_LICENSES = [
+    "BSD-3-Clause",
+    "MIT",
+    "Apache-2.0",
+    "BSD-3-Clause-Clear",
+]
 
-permissive_licenses = ["BSD-3-Clause", "MIT", "Apache-2.0", "BSD-3-Clause-Clear"]
-copyleft_licenses = ["GPL-3.0", "AGPL-3.0", "LGPL-3.0", "GPL-2.0", "GPL-2.0+",
-                     "GPL-2.0-only WITH Linux-syscall-note", "GPL-2.0-only"]
+COPIRIGHT_LICENSES = [
+    "GPL-3.0",
+    "AGPL-3.0",
+    "LGPL-3.0",
+    "GPL-2.0",
+    "GPL-2.0+",
+    "GPL-2.0-only WITH Linux-syscall-note",
+    "GPL-2.0-only",
+]
 
+def get_license(repo_name: str) -> str:
+    """
+    Search for the repository name and return its license.
 
-def get_license(repo_name):
-    # Search for the repository name and return its license
+    Args:
+        repo_name (str): The name of the repository.
+
+    Returns:
+        str: The license of the repository.
+    """
     for project in config.data['projects']:
         if project['PROJECT_NAME'] == repo_name:
             return project['MARKINGS']
     return None
 
-def beautify_output(flagged_files, log_prefix):
+def beautify_output(flagged_files: dict, log_prefix: str) -> None:
+    """
+    Print the flagged files report in a beautified format.
+
+    Args:
+        flagged_files (dict): A dictionary of flagged files and their issues.
+        log_prefix (str): The prefix to use for logging.
+    """
     output = []
     output.append(f"{log_prefix} ┌───────────────────────────────────────────┐")
     output.append(f"{log_prefix} │           **Flagged Files Report**         │")
@@ -46,21 +71,23 @@ def beautify_output(flagged_files, log_prefix):
 
     sys.exit(len(flagged_files))
 
-
-def main():
-    # clamp chatty logging from license_identifier
+def main() -> None:
+    """
+    The main function of the script.
+    """
+    # Clamp chatty logging from license_identifier
     logging.basicConfig(level=logging.WARNING)
 
     patch = Patch(sys.argv[1])
     repo_name = sys.argv[2]
     license = get_license(repo_name)
-    if license in permissive_licenses:
-        allowed_licenses = permissive_licenses
-    elif license in copyleft_licenses:
-        allowed_licenses = copyleft_licenses
+    if license in PERMISSIVE_LICENSES:
+        allowed_licenses = PERMISSIVE_LICENSES
+    elif license in COPIRIGHT_LICENSES:
+        allowed_licenses = COPIRIGHT_LICENSES
     else:
         allowed_licenses = []
-    
+
     license_checker = LicenseChecker(patch, repo_name, allowed_licenses)
     copyright_checker = CopyrightChecker(patch)
 
@@ -77,7 +104,7 @@ def main():
         else:
             flagged_files[file] = {'license_issues': [], 'copyright_issues': issues}
 
-    beautify_output(flagged_files, log_prefix)
+    beautify_output(flagged_files, LOG_PREFIX)
 
 if __name__ == '__main__':
     main()
