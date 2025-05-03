@@ -1,3 +1,7 @@
+"""
+Configuration data for projects and their licenses.
+"""
+
 data = {
     "projects": [
         {
@@ -14,5 +18,3 @@ data = {
         }
     ]
 }
-
-

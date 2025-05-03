@@ -1,11 +1,14 @@
 import json
 import tempfile
 import subprocess
-
 import warnings
+from patch import Patch
+
 warnings.filterwarnings("ignore", message="Libmagic magic database not found")
 
-from patch import Patch
+"""
+Module to check for licenses in a patch file using scancode.
+"""
 
 class LicenseChecker:
     """
@@ -36,10 +39,10 @@ class LicenseChecker:
             bool: True if the license is permissive, False otherwise.
         """
         # Split the scancode license string by 'AND' and 'OR'
-        licenses = [license.strip() for license in scancode_license.replace('AND', 'OR').split('OR')]
+        licenses = [lic.strip() for lic in scancode_license.replace('AND', 'OR').split('OR')]
         # Check if any license is not in the permissive licenses list
-        for license in licenses:
-            if license not in self.permissive_licenses:
+        for lic in licenses:
+            if lic not in self.permissive_licenses:
                 return False
         return True
 
@@ -67,7 +70,7 @@ class LicenseChecker:
             tmp_path
         ], check=True)
 
-        with open(output_file, 'r') as f:
+        with open(output_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
             licenses = []
             for result in data.get('files', []):

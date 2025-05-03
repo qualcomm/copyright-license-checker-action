@@ -28,3 +28,12 @@ jobs:
           repo: 'your-repo-name'
           patch: '${{ github.event.push.patch }}'
 
+
+## Copyright and License
+
+```text
+Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+SPDX-License-Identifier: BSD-3-Clause
+```
+
+
