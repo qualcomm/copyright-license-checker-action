@@ -91,6 +91,10 @@ class LicenseChecker:
         added_lines = []
         deleted_lines = []
 
+        # Check if content is None
+        if content is None:
+            return [], []
+
         # Separate added and deleted lines
         for line in content.split('\n'):
             if line.startswith('+'):
@@ -143,7 +147,6 @@ class LicenseChecker:
         """
         source_files = [change for change in self.patch.changes
                         if change['file_type'] == 'source']
-        print (source_files)
 
         flagged_files = {}
         if not source_files:
