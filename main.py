@@ -11,18 +11,41 @@ LOG_PREFIX = "< file license/copyright check >"
 PERMISSIVE_LICENSES = [
     "BSD-3-Clause",
     "MIT",
+    "Apache-1.0",
+    "Apache-1.1",
     "Apache-2.0",
     "BSD-3-Clause-Clear",
+    "FreeBSD-DOC",
+    "Zlib",
+    "BSD-1-Clause",
+    "BSD-2-Clause-first-lines",
+    "BSD-2-Clause-Views",
+    "BSD-3-Clause-Sun",
+    "BSD-4-Clause-Shortened",
+    "BSD-3-Clause-Attribution",
+    "BSD-4-Clause",
+    "ISC"
+
 ]
 
-COPIRIGHT_LICENSES = [
+COPYLEFT_LICENSES = [
+    "GPL-1.0-only",
+    "GPL-1.0-or-later",
+    "GPL-2.0-only",
+    "GPL-2.0-or-later",
+    "GPL-3.0-only"
     "GPL-3.0",
+    "GPL-3.0-or-later",
     "AGPL-3.0",
     "LGPL-3.0",
     "GPL-2.0",
     "GPL-2.0+",
     "GPL-2.0-only WITH Linux-syscall-note",
-    "GPL-2.0-only",
+    "AGPL-1.0-only",
+    "AGPL-1.0-or-later",
+    "LicenseRef-scancode-agpl-2.0",
+    "AGPL-3.0-only",
+    "AGPL-3.0-or-later"
 ]
 
 def get_license(repo_name: str) -> str:
@@ -90,8 +113,8 @@ def main() -> None:
     license = get_license(repo_name)
     if license in PERMISSIVE_LICENSES:
         allowed_licenses = PERMISSIVE_LICENSES
-    elif license in COPIRIGHT_LICENSES:
-        allowed_licenses = COPIRIGHT_LICENSES
+    elif license in COPYLEFT_LICENSES:
+        allowed_licenses = COPYLEFT_LICENSES
     else:
         allowed_licenses = [license]
 

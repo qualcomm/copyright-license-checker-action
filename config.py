@@ -14,7 +14,7 @@ data = {
         },
         {
             "PROJECT_NAME": "targoy-qti/qli_test_repo",
-            "MARKINGS": "MPL 2.0"
+            "MARKINGS": "GPL-2.0"
         }
     ]
 }
