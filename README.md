@@ -15,26 +15,31 @@ on:
     types: [opened, synchronize]
 
 jobs:
-  prepare-and-call:
+  fetch-and-run:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout PR head
         uses: actions/checkout@v3
         with:
+          fetch-depth: 0  # Full history so we can diff properly
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
-
-      - name: Fetch and decode PR patch
+ 
+      - name: Add PR base repo as remote and fetch it
         run: |
-          curl -H "Accept: application/vnd.github.v3.patch" -sL ${{ github.event.pull_request.url }} > pr.patch
+          git remote add upstream https://github.com/${{ github.event.pull_request.base.repo.full_name }}.git
+          git fetch upstream
+ 
+      - name: Generate final patch between base and head
+        run: |
+          git diff upstream/${{ github.event.pull_request.base.ref }} > pr.patch
           head -n 100 pr.patch
-      
+
       - name: Run copyright/license detector
         uses: targoy-qti/copyright-license-checker-action@main
         with:
           patch_file: pr.patch
           repo_name: ${{ github.repository }}
-
 
 ```
 
