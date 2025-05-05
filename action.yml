@@ -6,7 +6,7 @@ inputs:
     required: true
     default: 'patch_file.patch'
   repo_name:
-    description: 'The name of the repository'
+    description: 'The name of the github repository'
     required: true
 
 runs:

@@ -5,28 +5,83 @@ from patch import Patch
 from license_scancode import LicenseChecker
 from copyright_checker import CopyrightChecker
 
-log_prefix = "< file license/copyright check >"
-
+LOG_PREFIX = "< file license/copyright check >"
 
 # Define a dictionary of permissive licenses
+PERMISSIVE_LICENSES = [
+    "BSD-3-Clause",
+    "MIT",
+    "Apache-1.0",
+    "Apache-1.1",
+    "Apache-2.0",
+    "BSD-3-Clause-Clear",
+    "FreeBSD-DOC",
+    "Zlib",
+    "BSD-1-Clause",
+    "BSD-2-Clause-first-lines",
+    "BSD-2-Clause-Views",
+    "BSD-3-Clause-Sun",
+    "BSD-4-Clause-Shortened",
+    "BSD-3-Clause-Attribution",
+    "BSD-4-Clause",
+    "ISC"
 
-permissive_licenses = ["BSD-3-Clause", "MIT", "Apache-2.0", "BSD-3-Clause-Clear"]
-copyleft_licenses = ["GPL-3.0", "AGPL-3.0", "LGPL-3.0", "GPL-2.0", "GPL-2.0+",
-                     "GPL-2.0-only WITH Linux-syscall-note", "GPL-2.0-only"]
+]
 
+COPYLEFT_LICENSES = [
+    "GPL-1.0-only",
+    "GPL-1.0-or-later",
+    "GPL-2.0-only",
+    "GPL-2.0-or-later",
+    "GPL-3.0-only"
+    "GPL-3.0",
+    "GPL-3.0-or-later",
+    "AGPL-3.0",
+    "LGPL-3.0",
+    "GPL-2.0",
+    "GPL-2.0+",
+    "GPL-2.0-only WITH Linux-syscall-note",
+    "AGPL-1.0-only",
+    "AGPL-1.0-or-later",
+    "LicenseRef-scancode-agpl-2.0",
+    "AGPL-3.0-only",
+    "AGPL-3.0-or-later"
+]
 
-def get_license(repo_name):
-    # Search for the repository name and return its license
+def get_license(repo_name: str) -> str:
+    """
+    Search for the repository name in the config file and return its license.
+    the repository name is not found, return the default license (BSD-3-Clause-Clear).
+
+    Args:
+        repo_name (str): The name of the repository.
+
+    Returns:
+        str: The license of the repository.
+    """
     for project in config.data['projects']:
         if project['PROJECT_NAME'] == repo_name:
             return project['MARKINGS']
-    return None
+    # Return the default license if the repository name is not found
+    return "BSD-3-Clause-Clear"
 
-def beautify_output(flagged_files, log_prefix):
+
+def beautify_output(flagged_files: dict, license: str, log_prefix: str) -> None:
+    """
+    Print the flagged files report in a beautified format.
+
+    Args:
+        flagged_files (dict): A dictionary of flagged files and their issues.
+        license (str) : The default/top level license of the repo
+        log_prefix (str): The prefix to use for logging.
+    """
     output = []
     output.append(f"{log_prefix} ┌───────────────────────────────────────────┐")
     output.append(f"{log_prefix} │           **Flagged Files Report**         │")
     output.append(f"{log_prefix} ├───────────────────────────────────────────┤")
+    output.append(f"{log_prefix} │ Top level/default license of the repo is {license}")
+    output.append(f"{log_prefix} ├───────────────────────────────────────────┤")
+
     for file, issues in flagged_files.items():
         output.append(f"{log_prefix} │ 📄 **File:** {file}")
         if issues['license_issues']:
@@ -46,21 +101,23 @@ def beautify_output(flagged_files, log_prefix):
 
     sys.exit(len(flagged_files))
 
-
-def main():
-    # clamp chatty logging from license_identifier
+def main() -> None:
+    """
+    The main function of the script.
+    """
+    # Clamp chatty logging from license_identifier
     logging.basicConfig(level=logging.WARNING)
 
     patch = Patch(sys.argv[1])
     repo_name = sys.argv[2]
     license = get_license(repo_name)
-    if license in permissive_licenses:
-        allowed_licenses = permissive_licenses
-    elif license in copyleft_licenses:
-        allowed_licenses = copyleft_licenses
+    if license in PERMISSIVE_LICENSES:
+        allowed_licenses = PERMISSIVE_LICENSES
+    elif license in COPYLEFT_LICENSES:
+        allowed_licenses = COPYLEFT_LICENSES
     else:
-        allowed_licenses = []
-    
+        allowed_licenses = [license]
+
     license_checker = LicenseChecker(patch, repo_name, allowed_licenses)
     copyright_checker = CopyrightChecker(patch)
 
@@ -77,7 +134,7 @@ def main():
         else:
             flagged_files[file] = {'license_issues': [], 'copyright_issues': issues}
 
-    beautify_output(flagged_files, log_prefix)
+    beautify_output(flagged_files, license, LOG_PREFIX)
 
 if __name__ == '__main__':
     main()

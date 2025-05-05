@@ -1,0 +1,73 @@
+
+[MASTER]
+# Specify a configuration file.
+rcfile=
+
+# Python code to execute, usually to sys.path.append paths.
+init-hook=
+
+# Add files or directories to the blacklist. They should be base names, not paths.
+ignore=CVS
+
+# Add files or directories matching the regex patterns to the blacklist. The regex matches against base names, not paths.
+ignore-patterns=
+
+# Pickle collected data for later comparisons.
+persistent=yes
+
+# List of plugins (as comma separated values of python module names) to load, usually to register additional checkers.
+load-plugins=
+
+[MESSAGES CONTROL]
+# Only show warnings with the listed confidence levels. Leave empty to show all. Valid levels: HIGH, INFERENCE, INFERENCE_FAILURE, UNDEFINED
+confidence=
+
+# Disable the message, report, category or checker with the given id(s). You can either give multiple identifiers separated by comma (,) or put this option multiple times (only on the command line, not in the configuration file where it should appear only once).
+disable=missing-docstring,invalid-name
+
+[REPORTS]
+# Set the output format. Available formats are text, parseable, colorized, json and jsonlines
+output-format=text
+
+# Tells whether to display a full report or only the messages
+reports=no
+
+[LOGGING]
+# Logging modules to check that the string format arguments are in logging function parameter format
+logging-modules=logging
+
+[BASIC]
+# Good variable names which should always be accepted, separated by comma
+good-names=i,j,k,ex,Run,_
+
+# Bad variable names which should always be refused, separated by comma
+bad-names=foo,bar,baz,toto,tutu,tata
+
+[FORMAT]
+# Maximum number of characters on a single line.
+max-line-length=100
+
+# Regexp for a line that is allowed to be longer than the limit.
+ignore-long-lines=
+
+[DESIGN]
+# Maximum number of arguments for function / method
+max-args=5
+
+# Maximum number of attributes for a class (see R0902).
+max-attributes=7
+
+# Maximum number of public methods for a class (see R0904).
+max-public-methods=20
+
+[IMPORTS]
+# List of modules that can have C extensions (builtins are automatically added).
+extension-pkg-whitelist=
+
+[CLASSES]
+# List of method names used to declare (i.e. assign) instance attributes.
+defining-attr-methods=__init__,__new__,setUp
+
+[EXCEPTIONS]
+# Exceptions that will emit a warning when being caught. Defaults to "Exception"
+overgeneral-exceptions=builtins.Exception

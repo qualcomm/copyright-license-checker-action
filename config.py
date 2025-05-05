@@ -1,3 +1,7 @@
+"""
+Configuration data for projects and their licenses.
+"""
+
 data = {
     "projects": [
         {
@@ -10,9 +14,7 @@ data = {
         },
         {
             "PROJECT_NAME": "targoy-qti/qli_test_repo",
-            "MARKINGS": "BSD-3-Clause"
+            "MARKINGS": "GPL-2.0"
         }
     ]
 }
-
-
