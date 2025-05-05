@@ -9,40 +9,32 @@ This action is a GitHub Action that checks for copyright and license issues in a
 To use this action, you need to create a GitHub Action workflow file in your repository. Here's an example of how to use this action:
 
 ```yml
-name: Run Copyright and license check
- 
+name: Run Copyright and License Check
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened]
- 
+    types: [opened, synchronize]
+
 jobs:
-  copyright-license-check:
+  prepare-and-call:
     runs-on: ubuntu-latest
- 
     steps:
-      - name: Checkout PR code
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Needed to access base commit in all cases
- 
-      - name: Fetch base branch
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+
+      - name: Fetch and decode PR patch
         run: |
-          git fetch origin ${{ github.event.pull_request.base.ref }}
- 
-      - name: Generate patch
-        run: |
-          git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > pr.patch
-          echo "Patch generated:"
-          head -n 20 pr.patch
+          curl -H "Accept: application/vnd.github.v3.patch" -sL ${{ github.event.pull_request.url }} > pr.patch
+          head -n 100 pr.patch
       
-      - name: Get repository name
-        run: echo "REPO_NAME=${{ github.repository }}" >> $GITHUB_ENV
- 
       - name: Run copyright/license detector
         uses: targoy-qti/copyright-license-checker-action@main
         with:
           patch_file: pr.patch
-          repo_name: ${{ env.REPO_NAME }}
+          repo_name: ${{ github.repository }}
+
 
 ```
 
