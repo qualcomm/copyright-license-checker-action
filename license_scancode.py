@@ -143,6 +143,7 @@ class LicenseChecker:
         """
         source_files = [change for change in self.patch.changes
                         if change['file_type'] == 'source']
+        print (source_files)
 
         flagged_files = {}
         if not source_files:
