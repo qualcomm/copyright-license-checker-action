@@ -41,6 +41,9 @@ class CopyrightChecker:
         Returns:
             tuple: A tuple of added and deleted copyrights.
         """
+        if not isinstance(content, (str, bytes)):
+            return [], []
+
         added_copyrights = [
             (line[1:], self.normalize_string(line[1:]))
             for line in re.findall(r"^\+.*Copyright.*", content, re.MULTILINE)
