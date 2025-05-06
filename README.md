@@ -44,20 +44,20 @@ jobs:
 ```
 
 ## Scenarios Covered
-## License Detection
+### License Detection
 This action detects licenses in the code changes and ensures that any added licenses are permissive and compliant with the repository's policies.
 
-## Copyright Changes
+### Copyright Changes
 The action checks for any changes in copyright statements within the code and flags any deletions or modifications of existing copyright holders
 
-## Source File Identification
+### Source File Identification
 The action identifies source files based on their extensions and ensures that appropriate licenses are added to new source files as per repository's policies
 
 ```text
 '.c', '.cpp', '.h', '.hpp', '.java', '.py', '.js', '.ts', '.rb', '.go', '.swift', '.kt', '.kts'
 ```
 
-## Compliance Reporting
+### Compliance Reporting
 The action will flag the files in the build section that have non-compliant licenses or copyright changes.
 
 ## Copyright and License
