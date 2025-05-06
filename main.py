@@ -1,9 +1,9 @@
 import logging
 import sys
-import config
-from patch import Patch
-from license_scancode import LicenseChecker
-from copyright_checker import CopyrightChecker
+import scanner.config as config
+from scanner.patch import Patch
+from scanner.license_scancode import LicenseChecker
+from scanner.copyright_checker import CopyrightChecker
 
 LOG_PREFIX = "< file license/copyright check >"
 

@@ -2,7 +2,7 @@ import json
 import tempfile
 import subprocess
 import warnings
-from patch import Patch
+from scanner.patch import Patch
 
 warnings.filterwarnings("ignore", message="Libmagic magic database not found")
 
