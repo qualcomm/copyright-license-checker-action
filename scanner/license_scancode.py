@@ -159,7 +159,7 @@ class LicenseChecker:
                 if added_licenses and deleted_licenses and set(added_licenses) != set(deleted_licenses):
                     issues.append(f"License deleted: {deleted_licenses} and license added: {added_licenses}")
                 if added_licenses and not self.is_license_permissive(added_licenses):
-                    issues.append(f"Non-permissive license added: {added_licenses}")
+                    issues.append(f"Incompatible license added: {added_licenses}")
                 if deleted_licenses and not added_licenses:
                     issues.append(f"License deleted: {deleted_licenses}")
                 if issues:
