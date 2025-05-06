@@ -1,5 +1,5 @@
 import re
-from patch import Patch
+from scanner.patch import Patch
 
 """
 Module to check for copyright changes in a patch file.
