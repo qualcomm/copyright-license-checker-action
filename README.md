@@ -15,7 +15,7 @@ on:
     types: [opened, synchronize]
 
 jobs:
-  fetch-and-run:
+  copyright-license-detector:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR head
