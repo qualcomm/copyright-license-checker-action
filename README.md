@@ -36,7 +36,7 @@ jobs:
           head -n 100 pr.patch
 
       - name: Run copyright/license detector
-        uses: targoy-qti/copyright-license-checker-action@main
+        uses: qualcomm/copyright-license-checker-action@main
         with:
           patch_file: pr.patch
           repo_name: ${{ github.repository }}
