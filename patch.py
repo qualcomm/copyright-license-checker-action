@@ -47,12 +47,13 @@ class Patch:
 
             file_type = "binary" if "GIT binary patch" in file_change else "source"
 
-            self.changes.append({
-                'path_name': path_name,
-                'file_type': file_type,
-                'change_type': change_type,
-                'content': file_content
-            })
+            if not path_name.endswith('.patch'):
+                self.changes.append({
+                    'path_name': path_name,
+                    'file_type': file_type,
+                    'change_type': change_type,
+                    'content': file_content
+                })
 
     def get_changes(self):
         """
