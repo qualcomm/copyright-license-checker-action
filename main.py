@@ -24,8 +24,10 @@ PERMISSIVE_LICENSES = [
     "BSD-4-Clause-Shortened",
     "BSD-3-Clause-Attribution",
     "BSD-4-Clause",
-    "ISC"
-
+    "ISC",
+    "CC0-1.0",
+    "ICU",
+    "LicenseRef-scancode-unicode"
 ]
 
 COPYLEFT_LICENSES = [
