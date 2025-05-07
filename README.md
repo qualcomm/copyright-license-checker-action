@@ -6,7 +6,7 @@ This action is a GitHub Action that checks for copyright and license issues in a
 
 ## Usage
 
-To use this action, you need to create a GitHub Action workflow file in your repository. Here's an example of how to use this action:
+To use this action, you need to create a GitHub Action workflow file in your repository (.github/workflows/copyright-license-checker-action.yml). Here's an example of how to use this action
 
 ```yml
 name: Run Copyright and License Check
