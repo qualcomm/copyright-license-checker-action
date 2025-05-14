@@ -129,7 +129,7 @@ class LicenseChecker:
         """
         # Define common source file extensions
         source_file_extensions = [
-            '.c', '.cpp', '.h', '.hpp', '.java', '.py', '.js', '.ts', '.rb', '.go', '.swift', '.kt', '.kts'
+            '.c', '.cpp', '.h', '.hpp', '.java', '.py', '.js', '.ts', '.rb', '.go', '.swift', '.kt', '.kts', '.sh'
         ]
 
         # Check if the file extension is in the list of source file extensions
