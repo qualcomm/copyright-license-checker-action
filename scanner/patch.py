@@ -47,7 +47,7 @@ class Patch:
 
             file_type = "binary" if "GIT binary patch" in file_change else "source"
 
-            if not path_name.endswith('.patch'):
+            if not path_name.endswith(('.patch', '.bb')):
                 self.changes.append({
                     'path_name': path_name,
                     'file_type': file_type,
