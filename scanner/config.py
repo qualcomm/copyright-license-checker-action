@@ -15,6 +15,12 @@ data = {
         {
             "PROJECT_NAME": "targoy-qti/qli_test_repo",
             "MARKINGS": "GPL-2.0"
-        }
+        },
+        {
+            "PROJECT_NAME": "audioreach-kernel",
+            "MARKINGS": "GPL-2.0-only"
+
+        },
+
     ]
 }

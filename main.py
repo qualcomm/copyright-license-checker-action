@@ -62,7 +62,7 @@ def get_license(repo_name: str) -> str:
         str: The license of the repository.
     """
     for project in config.data['projects']:
-        if project['PROJECT_NAME'] == repo_name:
+        if repo_name.endswith(f"/{project['PROJECT_NAME']}") or repo_name == project['PROJECT_NAME']:
             return project['MARKINGS']
     # Return the default license if the repository name is not found
     return "BSD-3-Clause-Clear"
