@@ -2,6 +2,8 @@ import json
 import tempfile
 import subprocess
 import warnings
+import os
+from pathlib import Path
 from scanner.patch import Patch
 
 warnings.filterwarnings("ignore", message="Libmagic magic database not found")
@@ -46,76 +48,76 @@ class LicenseChecker:
                 return False
         return True
 
-    def detect_license_with_scancode(self, content: str) -> list:
+    def detect_licenses_batch(self, changes: list) -> dict:
         """
-        Detect licenses using scancode.
-
+        Detect licenses for multiple changes in a single scancode run.
         Args:
-            content (str): The content to check.
-
+            changes (list): List of changes to check.
         Returns:
-            list: A list of licenses.
+            dict: Dictionary mapping (change_index, content_type) -> licenses.
         """
-        with tempfile.NamedTemporaryFile(mode='w+', suffix='.txt', delete=False) as tmp_file:
-            tmp_file.write(content)
-            tmp_path = tmp_file.name
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_map = {}
 
-        output_file = tmp_path + '_scancode.json'
-        subprocess.run([
-            'scancode',
-            '--license',
-            '--strip-root',
-            '--quiet',
-            '--json-pp', output_file,
-            tmp_path
-        ], check=True)
+            for idx, change in enumerate(changes):
+                content = change['content']
+                # Check if content is None
+                if not content:
+                    continue
 
-        with open(output_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            licenses = []
-            for result in data.get('files', []):
-                if len(result['license_detections']):
-                    licenses = result['license_detections'][0]['license_expression_spdx']
-                return licenses
+                added_lines = []
+                deleted_lines = []
+                # Separate added and deleted lines
+                for line in content.split('\n'):
+                    if line.startswith('+'):
+                        added_lines.append(line[1:])
+                    elif line.startswith('-'):
+                        deleted_lines.append(line[1:])
 
-    def detect_license(self, content: str) -> tuple:
-        """
-        Detect licenses in the content.
+                # Join added and deleted lines as-is
+                if added_lines:
+                    added_file = f"{idx}_added.txt"
+                    Path(tmpdir, added_file).write_text("\n".join(added_lines))
+                    file_map[added_file] = (idx, 'added')
 
-        Args:
-            content (str): The content to check.
+                if deleted_lines:
+                    deleted_file = f"{idx}_deleted.txt"
+                    Path(tmpdir, deleted_file).write_text("\n".join(deleted_lines))
+                    file_map[deleted_file] = (idx, 'deleted')
 
-        Returns:
-            tuple: A tuple of added and deleted licenses.
-        """
-        added_lines = []
-        deleted_lines = []
+            if not file_map:
+                return {}
 
-        # Check if content is None
-        if content is None:
-            return [], []
+            output_file = os.path.join(tmpdir, 'scancode_results.json')
+            subprocess.run([
+                'scancode',
+                '--license',
+                '--strip-root',
+                '--quiet',
+                '--json-pp', output_file,
+                tmpdir
+            ], check=True)
 
-        # Separate added and deleted lines
-        for line in content.split('\n'):
-            if line.startswith('+'):
-                added_lines.append(line[1:])
-            elif line.startswith('-'):
-                deleted_lines.append(line[1:])
+            with open(output_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
 
-        # Join added and deleted lines as-is
-        added_text = "\n".join(added_lines)
-        deleted_text = "\n".join(deleted_lines)
+            results = {}
+            for file_result in data.get('files', []):
+                if file_result['type'] != 'file':
+                    continue
 
-        added_licenses = []
-        deleted_licenses = []
+                filename = os.path.basename(file_result['path'])
+                if filename not in file_map:
+                    continue
 
-        # Check for licenses in added lines
-        added_licenses = self.detect_license_with_scancode(added_text)
+                licenses = []
+                if len(file_result.get('license_detections', [])):
+                    licenses = file_result['license_detections'][0]['license_expression_spdx']
 
-        # Check for licenses in deleted lines
-        deleted_licenses = self.detect_license_with_scancode(deleted_text)
+                change_idx, content_type = file_map[filename]
+                results[(change_idx, content_type)] = licenses
 
-        return added_licenses, deleted_licenses
+            return results
 
     def is_source_file(self, file_name: str) -> bool:
         """
@@ -152,8 +154,12 @@ class LicenseChecker:
         if not source_files:
             return flagged_files
 
-        for change in source_files:
-            added_licenses, deleted_licenses = self.detect_license(change['content'])
+        license_results = self.detect_licenses_batch(source_files)
+
+        for idx, change in enumerate(source_files):
+            added_licenses = license_results.get((idx, 'added'), [])
+            deleted_licenses = license_results.get((idx, 'deleted'), [])
+
             issues = []
             if change['change_type'] == 'MODIFIED' or change['change_type'] == 'ADDED':
                 if added_licenses and deleted_licenses and set(added_licenses) != set(deleted_licenses):
@@ -171,5 +177,4 @@ class LicenseChecker:
                     issues.append(f"No license added for source file: {change['path_name']}")
                     if issues:
                         flagged_files[change['path_name']] = issues
-
         return flagged_files
