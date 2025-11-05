@@ -60,11 +60,13 @@ The action identifies source files based on their extensions and ensures that ap
 ### Compliance Reporting
 The action will flag the files in the build section that have non-compliant licenses or copyright changes.
 
+### License Ignore Configuration
+
+The action supports an optional `.licenseignore` file to exclude files or paths from license checks. Create a `.licenseignore` file at the repository root and list patterns (git‑style wildcards) for files that should be ignored.
+
 ## Copyright and License
 
 ```text
 Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 SPDX-License-Identifier: BSD-3-Clause
 ```
-
-
