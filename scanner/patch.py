@@ -1,4 +1,5 @@
 import re
+from scanner.ignore_config import IgnoreConfig
 
 """
 Module to represent and process patch files.
@@ -17,6 +18,7 @@ class Patch:
             patchfile (str): The path to the patch file.
         """
         self.patchfile = patchfile
+        self.ignore_config = IgnoreConfig()
 
         with open(self.patchfile, 'r', encoding='utf-8') as f:
             self.patch_content = f.read()
@@ -47,13 +49,19 @@ class Patch:
 
             file_type = "binary" if "GIT binary patch" in file_change else "source"
 
-            if not path_name.endswith(('.patch', '.bb')):
-                self.changes.append({
-                    'path_name': path_name,
-                    'file_type': file_type,
-                    'change_type': change_type,
-                    'content': file_content
-                })
+            # Skip files that match hardcoded exclusions or config-based exclusions
+            if path_name.endswith(('.patch', '.bb')):
+                continue
+
+            if self.ignore_config.is_excluded(path_name):
+                continue
+
+            self.changes.append({
+                'path_name': path_name,
+                'file_type': file_type,
+                'change_type': change_type,
+                'content': file_content
+            })
 
     def get_changes(self):
         """
