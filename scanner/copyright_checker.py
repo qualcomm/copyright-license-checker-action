@@ -31,6 +31,37 @@ class CopyrightChecker:
         """
         return ''.join(filter(str.isalpha, s))
 
+    def _check_allowed_transitions(self, deleted_copyrights_set: dict, 
+                                   added_copyrights: list) -> set:
+        """
+        Check for allowed copyright transitions that should not be flagged.
+
+        Args:
+            deleted_copyrights_set (dict): Dictionary of normalized deleted copyrights.
+            added_copyrights (list): List of tuples (original, normalized) added copyrights.
+
+        Returns:
+            set: Set of normalized deleted copyrights that are part of allowed transitions.
+        """
+        allowed = set()
+        
+        # Define the allowed transition patterns
+        deleted_pattern = "Qualcomm Innovation Center, Inc. All rights"
+        added_pattern = "Qualcomm Technologies, Inc. and/or its subsidiaries"
+        
+        # Check if any added copyright contains the allowed pattern
+        has_allowed_addition = any(
+            added_pattern in original for original, _ in added_copyrights
+        )
+        
+        if has_allowed_addition:
+            # Check deleted copyrights for the pattern
+            for normalized, original in deleted_copyrights_set.items():
+                if deleted_pattern in original:
+                    allowed.add(normalized)
+        
+        return allowed
+
     def detect_copyright_changes(self, content: str) -> tuple:
         """
         Detect copyright changes in the content.
@@ -83,6 +114,13 @@ class CopyrightChecker:
 
                 if deleted_copyrights_set:
                     flagged_changes = deleted_copyrights_set.keys() - added_copyrights_set.keys()
+
+                # Filter out allowed copyright transitions
+                if flagged_changes:
+                    allowed_transitions = self._check_allowed_transitions(
+                        deleted_copyrights_set, added_copyrights
+                    )
+                    flagged_changes = flagged_changes - allowed_transitions
 
                 if flagged_changes:
                     original_flagged_changes = [
