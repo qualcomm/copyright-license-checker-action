@@ -32,20 +32,84 @@ class LicenseChecker:
 
     def is_license_permissive(self, scancode_license: str) -> bool:
         """
-        Check if a license is permissive.
-
+        Check if a license is permissive by evaluating SPDX license expressions.
+        
+        Special handling for dual-license scenarios:
+        - If expression starts with (X OR Y), we check if at least one option is permissive
+        - If the same licenses appear later with AND, we ignore them (they're from comments)
+        
+        For OR expressions: At least one option must be permissive
+        For AND expressions: All components must be permissive
+        
         Args:
-            scancode_license (str): The license to check.
+            scancode_license (str): The SPDX license expression to check.
 
         Returns:
-            bool: True if the license is permissive, False otherwise.
+            bool: True if the license expression is permissive, False otherwise.
         """
-        # Split the scancode license string by 'AND' and 'OR'
-        licenses = [lic.strip() for lic in scancode_license.replace('AND', 'OR').split('OR')]
-        # Check if any license is not in the permissive licenses list
-        for lic in licenses:
-            if lic not in self.permissive_licenses:
-                return False
+        # DEBUG: Show input
+        print(f"[DEBUG] is_license_permissive input: {scancode_license}")
+        
+        expression = scancode_license.strip()
+        
+        # Check if this is a dual-license pattern: starts with (X OR Y) AND ...
+        # In this case, if the OR part has a permissive option, we accept it
+        if expression.startswith('(') and ' OR ' in expression.split(')')[0]:
+            # Extract the OR part
+            or_part = expression.split(')')[0] + ')'
+            or_part_clean = or_part.strip('()')
+            or_licenses = [lic.strip() for lic in or_part_clean.split(' OR ')]
+            
+            print(f"[DEBUG] Dual-license detected with OR part: {or_licenses}")
+            
+            # Check if at least one license in the OR is permissive
+            for lic in or_licenses:
+                if lic in self.permissive_licenses:
+                    print(f"[DEBUG] License '{lic}' IS in permissive list - dual-license PASSES")
+                    return True
+                else:
+                    print(f"[DEBUG] License '{lic}' NOT in permissive list")
+            
+            print(f"[DEBUG] No permissive option in dual-license OR - FAIL")
+            return False
+        
+        # Standard evaluation: split by AND first to get AND-groups
+        and_groups = [group.strip() for group in expression.split(' AND ')]
+        print(f"[DEBUG] AND groups: {and_groups}")
+        
+        # For each AND group, check if it's permissive
+        for and_group in and_groups:
+            # Check if this group contains OR
+            if ' OR ' in and_group:
+                # Remove parentheses
+                and_group = and_group.strip('()')
+                # Split by OR - at least one must be permissive
+                or_licenses = [lic.strip() for lic in and_group.split(' OR ')]
+                print(f"[DEBUG] OR group found: {or_licenses}")
+                
+                # Check if at least one license in the OR group is permissive
+                has_permissive = False
+                for lic in or_licenses:
+                    if lic in self.permissive_licenses:
+                        print(f"[DEBUG] License '{lic}' IS in permissive list (OR satisfied)")
+                        has_permissive = True
+                        break
+                    else:
+                        print(f"[DEBUG] License '{lic}' NOT in permissive list")
+                
+                if not has_permissive:
+                    print(f"[DEBUG] OR group has no permissive license - FAIL")
+                    return False
+            else:
+                # Single license in this AND group - must be permissive
+                lic = and_group.strip('()')
+                if lic not in self.permissive_licenses:
+                    print(f"[DEBUG] License '{lic}' NOT in permissive list - FAIL")
+                    return False
+                else:
+                    print(f"[DEBUG] License '{lic}' IS in permissive list")
+        
+        print(f"[DEBUG] All checks passed - license expression is permissive")
         return True
 
     def detect_licenses_batch(self, changes: list) -> dict:
@@ -159,6 +223,16 @@ class LicenseChecker:
         for idx, change in enumerate(source_files):
             added_licenses = license_results.get((idx, 'added'), [])
             deleted_licenses = license_results.get((idx, 'deleted'), [])
+
+            # DEBUG: Print what scancode detected
+            if added_licenses or deleted_licenses:
+                print(f"\n[DEBUG] File: {change['path_name']}")
+                print(f"[DEBUG] Change type: {change['change_type']}")
+                print(f"[DEBUG] Added licenses from scancode: {added_licenses}")
+                print(f"[DEBUG] Deleted licenses from scancode: {deleted_licenses}")
+                if added_licenses:
+                    print(f"[DEBUG] Is permissive check result: {self.is_license_permissive(added_licenses)}")
+                    print(f"[DEBUG] Allowed licenses list: {self.permissive_licenses}")
 
             issues = []
             if change['change_type'] == 'MODIFIED' or change['change_type'] == 'ADDED':

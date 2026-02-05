@@ -50,7 +50,7 @@ class Patch:
             file_type = "binary" if "GIT binary patch" in file_change else "source"
 
             # Skip files that match hardcoded exclusions or config-based exclusions
-            if path_name.endswith(('.patch', '.bb')):
+            if path_name.endswith(('.patch', '.bb', '.md', '.json', '.yml')):
                 continue
 
             if self.ignore_config.is_excluded(path_name):

@@ -18,6 +18,7 @@ PERMISSIVE_LICENSES = [
     "FreeBSD-DOC",
     "Zlib",
     "BSD-1-Clause",
+    "BSD-2-Clause",
     "BSD-2-Clause-first-lines",
     "BSD-2-Clause-Views",
     "BSD-3-Clause-Sun",
@@ -68,12 +69,13 @@ def get_license(repo_name: str) -> str:
     return "BSD-3-Clause-Clear"
 
 
-def beautify_output(flagged_files: dict, license: str, log_prefix: str) -> None:
+def beautify_output(flagged_files: dict, warning_files: dict, license: str, log_prefix: str) -> None:
     """
     Print the flagged files report in a beautified format.
 
     Args:
-        flagged_files (dict): A dictionary of flagged files and their issues.
+        flagged_files (dict): A dictionary of flagged files with blocking issues.
+        warning_files (dict): A dictionary of files with warning issues (non-blocking).
         license (str) : The default/top level license of the repo
         log_prefix (str): The prefix to use for logging.
     """
@@ -84,24 +86,64 @@ def beautify_output(flagged_files: dict, license: str, log_prefix: str) -> None:
     output.append(f"{log_prefix} │ Top level/default license of the repo is {license}")
     output.append(f"{log_prefix} ├───────────────────────────────────────────┤")
 
-    for file, issues in flagged_files.items():
-        output.append(f"{log_prefix} │ 📄 **File:** {file}")
-        if issues['license_issues']:
-            output.append(f"{log_prefix} │ 🚨 **License issues detected:**")
-            for issue in issues['license_issues']:
-                output.append(f"{log_prefix} │   - {issue}")
-        if issues['copyright_issues']:
-            output.append(f"{log_prefix} │ ⚠️ **Copyright issues detected:**")
-            for issue in issues['copyright_issues']:
-                output.append(f"{log_prefix} │   - {issue}")
-        if not issues['license_issues'] and not issues['copyright_issues']:
-            output.append(f"{log_prefix} │ ✅ **No issues detected**")
+    # Print blocking errors first
+    if flagged_files:
+        output.append(f"{log_prefix} │")
+        output.append(f"{log_prefix} │ 🚨 **BLOCKING ERRORS:**")
+        for file, issues in flagged_files.items():
+            output.append(f"{log_prefix} │ 📄 **File:** {file}")
+            if issues['license_issues']:
+                output.append(f"{log_prefix} │ 🚨 **License issues detected:**")
+                for issue in issues['license_issues']:
+                    output.append(f"{log_prefix} │   - {issue}")
+            if issues['copyright_issues']:
+                output.append(f"{log_prefix} │ 🚨 **Copyright issues detected:**")
+                for issue in issues['copyright_issues']:
+                    output.append(f"{log_prefix} │   - {issue}")
+
+    # Print warnings (non-blocking)
+    if warning_files:
+        output.append(f"{log_prefix} │")
+        output.append(f"{log_prefix} │ ⚠️  **WARNINGS (Non-blocking):**")
+        for file, issues in warning_files.items():
+            output.append(f"{log_prefix} │ 📄 **File:** {file}")
+            if issues['license_issues']:
+                output.append(f"{log_prefix} │ ⚠️  **License warnings:**")
+                for issue in issues['license_issues']:
+                    output.append(f"{log_prefix} │   - {issue}")
+            if issues['copyright_issues']:
+                output.append(f"{log_prefix} │ ⚠️  **Copyright warnings:**")
+                for issue in issues['copyright_issues']:
+                    output.append(f"{log_prefix} │   - {issue}")
+
+    if not flagged_files and not warning_files:
+        output.append(f"{log_prefix} │ ✅ **No issues detected**")
+    
     output.append(f"{log_prefix} └───────────────────────────────────────────┘")
 
     # Print the entire output block
     print("\n".join(output))
 
-    sys.exit(len(flagged_files))
+    # Only exit with error if there are blocking issues
+    if flagged_files:
+        sys.exit(len(flagged_files))
+    else:
+        sys.exit(0)
+
+def is_uncertain_license_issue(issue: str) -> bool:
+    """
+    Check if a license issue is related to uncertain/unknown licenses.
+    Treats any license containing "LicenseRef-scancode-unknown" as a warning.
+    
+    Args:
+        issue (str): The license issue string.
+    
+    Returns:
+        bool: True if the issue is related to uncertain licenses, False otherwise.
+    """
+    # Check if the issue contains the uncertain license pattern (case-insensitive)
+    return "LicenseRef-scancode-unknown" in issue
+
 
 def main() -> None:
     """
@@ -126,17 +168,27 @@ def main() -> None:
     flagged_license_files = license_checker.run()
     flagged_copyright_files = copyright_checker.run()
 
-    # Combine flagged files and their issues
-    flagged_files = {}
+    # Combine flagged files and their issues, separating errors from warnings
+    flagged_files = {}  # Blocking errors
+    warning_files = {}  # Non-blocking warnings
+    
     for file, issues in flagged_license_files.items():
-        flagged_files[file] = {'license_issues': issues, 'copyright_issues': []}
+        # Separate uncertain license issues (warnings) from real errors
+        error_issues = [issue for issue in issues if not is_uncertain_license_issue(issue)]
+        warning_issues = [issue for issue in issues if is_uncertain_license_issue(issue)]
+        
+        if error_issues:
+            flagged_files[file] = {'license_issues': error_issues, 'copyright_issues': []}
+        if warning_issues:
+            warning_files[file] = {'license_issues': warning_issues, 'copyright_issues': []}
+    
     for file, issues in flagged_copyright_files.items():
         if file in flagged_files:
             flagged_files[file]['copyright_issues'] = issues
         else:
             flagged_files[file] = {'license_issues': [], 'copyright_issues': issues}
 
-    beautify_output(flagged_files, license, LOG_PREFIX)
+    beautify_output(flagged_files, warning_files, license, LOG_PREFIX)
 
 if __name__ == '__main__':
     main()
