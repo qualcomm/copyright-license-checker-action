@@ -96,32 +96,44 @@ def beautify_output(flagged_files: dict, warning_files: dict, license: str, log_
     # Print blocking errors first
     if flagged_files:
         output.append(f"{log_prefix} │")
-        output.append(f"{log_prefix} │ 🚨 **BLOCKING ERRORS:**")
+        output.append(f"{log_prefix} │ ═══════════════════════════════════════════")
+        output.append(f"{log_prefix} │ 🚨 BLOCKING ERRORS")
+        output.append(f"{log_prefix} │ ═══════════════════════════════════════════")
         for file, issues in flagged_files.items():
-            output.append(f"{log_prefix} │ 📄 **File:** {file}")
+            output.append(f"{log_prefix} │")
+            output.append(f"{log_prefix} │ ┌─ 📄 FILE: {file}")
             if issues['license_issues']:
-                output.append(f"{log_prefix} │ 🚨 **License issues detected:**")
+                output.append(f"{log_prefix} │ │")
+                output.append(f"{log_prefix} │ ├─ 🚨 LICENSE ISSUES:")
                 for issue in issues['license_issues']:
-                    output.append(f"{log_prefix} │   - {issue}")
+                    output.append(f"{log_prefix} │ │  • {issue}")
             if issues['copyright_issues']:
-                output.append(f"{log_prefix} │ 🚨 **Copyright issues detected:**")
+                output.append(f"{log_prefix} │ │")
+                output.append(f"{log_prefix} │ ├─ 🚨 COPYRIGHT ISSUES:")
                 for issue in issues['copyright_issues']:
-                    output.append(f"{log_prefix} │   - {issue}")
+                    output.append(f"{log_prefix} │ │  • {issue}")
+            output.append(f"{log_prefix} │ └─────────────────────────────────────────")
 
     # Print warnings (non-blocking)
     if warning_files:
         output.append(f"{log_prefix} │")
-        output.append(f"{log_prefix} │ ⚠️  **WARNINGS (Non-blocking):**")
+        output.append(f"{log_prefix} │ ═══════════════════════════════════════════")
+        output.append(f"{log_prefix} │ ⚠️  WARNINGS (Non-blocking)")
+        output.append(f"{log_prefix} │ ═══════════════════════════════════════════")
         for file, issues in warning_files.items():
-            output.append(f"{log_prefix} │ 📄 **File:** {file}")
+            output.append(f"{log_prefix} │")
+            output.append(f"{log_prefix} │ ┌─ 📄 FILE: {file}")
             if issues['license_issues']:
-                output.append(f"{log_prefix} │ ⚠️  **License warnings:**")
+                output.append(f"{log_prefix} │ │")
+                output.append(f"{log_prefix} │ ├─ ⚠️  LICENSE WARNINGS:")
                 for issue in issues['license_issues']:
-                    output.append(f"{log_prefix} │   - {issue}")
+                    output.append(f"{log_prefix} │ │  • {issue}")
             if issues['copyright_issues']:
-                output.append(f"{log_prefix} │ ⚠️  **Copyright warnings:**")
+                output.append(f"{log_prefix} │ │")
+                output.append(f"{log_prefix} │ ├─ ⚠️  COPYRIGHT WARNINGS:")
                 for issue in issues['copyright_issues']:
-                    output.append(f"{log_prefix} │   - {issue}")
+                    output.append(f"{log_prefix} │ │  • {issue}")
+            output.append(f"{log_prefix} │ └─────────────────────────────────────────")
 
     if not flagged_files and not warning_files:
         output.append(f"{log_prefix} │ ✅ **No issues detected**")
