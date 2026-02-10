@@ -97,11 +97,11 @@ def beautify_output(flagged_files: dict, warning_files: dict, license: str, log_
     if flagged_files:
         output.append(f"{log_prefix} │")
         output.append(f"{log_prefix} │ ═══════════════════════════════════════════")
-        output.append(f"{log_prefix} │ 🚨 BLOCKING ERRORS")
+        output.append(f"{log_prefix} │ 🚨  B L O C K I N G   E R R O R S")
         output.append(f"{log_prefix} │ ═══════════════════════════════════════════")
         for file, issues in flagged_files.items():
             output.append(f"{log_prefix} │")
-            output.append(f"{log_prefix} │ ┌─ 📄 FILE: {file}")
+            output.append(f"{log_prefix} │ ┌─ 📄 F I L E: {file}")
             if issues['license_issues']:
                 output.append(f"{log_prefix} │ │")
                 output.append(f"{log_prefix} │ ├─ 🚨 LICENSE ISSUES:")
@@ -118,11 +118,11 @@ def beautify_output(flagged_files: dict, warning_files: dict, license: str, log_
     if warning_files:
         output.append(f"{log_prefix} │")
         output.append(f"{log_prefix} │ ═══════════════════════════════════════════")
-        output.append(f"{log_prefix} │ ⚠️  WARNINGS (Non-blocking)")
+        output.append(f"{log_prefix} │ ⚠️   W A R N I N G S  (Non-blocking)")
         output.append(f"{log_prefix} │ ═══════════════════════════════════════════")
         for file, issues in warning_files.items():
             output.append(f"{log_prefix} │")
-            output.append(f"{log_prefix} │ ┌─ 📄 FILE: {file}")
+            output.append(f"{log_prefix} │ ┌─ 📄 F I L E: {file}")
             if issues['license_issues']:
                 output.append(f"{log_prefix} │ │")
                 output.append(f"{log_prefix} │ ├─ ⚠️  LICENSE WARNINGS:")
