@@ -132,17 +132,44 @@ def beautify_output(flagged_files: dict, warning_files: dict, license: str, log_
 
 def is_uncertain_license_issue(issue: str) -> bool:
     """
-    Check if a license issue is related to uncertain/unknown licenses.
-    Treats any license containing "LicenseRef-scancode-unknown" as a warning.
+    Check if a license issue is ONLY related to uncertain/unknown licenses.
+    Only treats it as a warning if the unknown license is the sole problem.
+    If there are other incompatible licenses, it remains a blocking error.
     
     Args:
         issue (str): The license issue string.
     
     Returns:
-        bool: True if the issue is related to uncertain licenses, False otherwise.
+        bool: True if the issue is ONLY about uncertain licenses, False otherwise.
     """
-    # Check if the issue contains the uncertain license pattern (case-insensitive)
-    return "LicenseRef-scancode-unknown" in issue
+    # Extract the license expression from the issue
+    if "Incompatible license added:" in issue:
+        license_expr = issue.split("Incompatible license added:")[1].strip()
+    elif "License deleted:" in issue and "and license added:" in issue:
+        # For license change issues, check the added license
+        license_expr = issue.split("and license added:")[1].strip()
+    else:
+        # For other issue types, check if it contains unknown
+        return "LicenseRef-scancode-unknown" in issue
+    
+    # Parse the license expression to check if ALL licenses are unknown
+    # Remove parentheses and split by AND/OR
+    licenses = []
+    for part in license_expr.replace('(', '').replace(')', '').split(' AND '):
+        for lic in part.split(' OR '):
+            lic = lic.strip()
+            if lic:
+                licenses.append(lic)
+    
+    # Check if all licenses are unknown/uncertain
+    if not licenses:
+        return False
+    
+    # If ALL licenses are unknown, it's a warning
+    # If ANY license is known but incompatible, it's an error
+    all_unknown = all('LicenseRef-scancode-unknown' in lic for lic in licenses)
+    
+    return all_unknown
 
 
 def main() -> None:
