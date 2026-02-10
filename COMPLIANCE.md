@@ -150,19 +150,37 @@ The following scenarios generate **WARNINGS** but do NOT block the build:
 
 **What triggers this:**
 - Scancode detects uncertain or unknown license patterns
-- Any license identifier containing `LicenseRef-scancode-unknown` (e.g., `LicenseRef-scancode-unknown`, `LicenseRef-scancode-unknown-license-reference`, etc.)
+- Any `LicenseRef-scancode-*` license that is not in the known permissive list
 - Ambiguous license text that scancode cannot confidently identify
 
-**How it works:**
-The action uses generic pattern matching to identify uncertain licenses. Any license containing the pattern `LicenseRef-scancode-unknown` is automatically treated as a warning rather than a blocking error. This catches all current and future scancode unknown license variants without requiring manual updates to the code.
+**Specific patterns treated as warnings:**
+- `LicenseRef-scancode-unknown-*` (e.g., `LicenseRef-scancode-unknown-license-reference`)
+- `LicenseRef-scancode-warranty-disclaimer` (just a disclaimer, not a license)
+- `LicenseRef-scancode-proprietary-*` (when mixed with other uncertain licenses)
+- Any other `LicenseRef-scancode-*` not explicitly in the permissive list
 
-**Example:**
+**How it works:**
+The action intelligently evaluates license expressions:
+1. If ALL licenses in the expression are uncertain/unknown → **WARNING**
+2. If ANY license is a known incompatible license (GPL, AGPL, etc.) → **BLOCKING ERROR**
+3. Mixed uncertain licenses are treated as warnings to allow manual review
+
+**Example - Warning:**
 ```
 ⚠️ WARNINGS (Non-blocking):
 📄 File: src/vendor/third_party.c
 ⚠️ License warnings:
-  - Incompatible license added: LicenseRef-scancode-unknown-license-reference
+  - Incompatible license added: LicenseRef-scancode-unknown-license-reference AND LicenseRef-scancode-proprietary-license AND LicenseRef-scancode-warranty-disclaimer
 ```
+
+**Example - Blocking Error (mixed with known incompatible):**
+```
+🚨 BLOCKING ERROR:
+📄 File: src/module.c
+🚨 License issues detected:
+  - Incompatible license added: GPL-2.0-only AND LicenseRef-scancode-unknown-license-reference
+```
+*This blocks because GPL-2.0-only is a known incompatible license*
 
 **What to do:**
 - Manually review the file to identify the actual license
@@ -181,6 +199,34 @@ Scancode may flag licenses as "unknown" due to:
 These cases require human review but shouldn't automatically block development, as they may be false positives or require clarification rather than immediate remediation.
 
 **Compliance Impact:** LOW - Requires manual review but doesn't block development. However, unresolved unknown licenses should be addressed before production release.
+
+---
+
+### Special Case: Sole Proprietary License
+
+**What triggers this:**
+- A file contains ONLY `LicenseRef-scancode-proprietary-license` with no other licenses
+
+**Example - Blocking Error:**
+```
+🚨 BLOCKING ERROR:
+📄 File: src/proprietary.c
+🚨 License issues detected:
+  - Incompatible license added: LicenseRef-scancode-proprietary-license
+```
+
+**Why this blocks:**
+When scancode identifies a file as having ONLY a proprietary license (not mixed with other uncertain licenses), it's a clear indication of incompatible licensing that should be addressed immediately.
+
+**How to fix:**
+- Remove the proprietary code
+- Replace with code under a compatible license
+- Add proper open-source license headers
+- Obtain permission to relicense the code
+
+**Note:** If `LicenseRef-scancode-proprietary-license` appears mixed with other uncertain licenses (e.g., `LicenseRef-scancode-unknown-*`), it's treated as a warning for manual review, as this may indicate scancode detection ambiguity rather than actual proprietary code.
+
+**Compliance Impact:** HIGH - Proprietary code in open-source repositories creates licensing conflicts
 
 ---
 
@@ -285,9 +331,15 @@ tests/fixtures/**
 
 ## Contact and Support
 
+### For Internal Developers
+
+**Contact:** lost.dev  
+**POC:** targoy (Tarun Goyal)
+
 For questions about license compliance or to request exemptions:
 - Review your organization's open source compliance policies
 - Consult with your legal team for complex licensing questions
 - File an issue in the action repository for technical problems
+- Reach out to the POC for internal support and guidance
 
 ---
