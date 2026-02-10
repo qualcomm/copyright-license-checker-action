@@ -136,9 +136,10 @@ def is_uncertain_license_issue(issue: str) -> bool:
     Only treats it as a warning if the unknown license is the sole problem.
     If there are other incompatible licenses, it remains a blocking error.
     
-    Uncertain licenses include:
+    Special case: LicenseRef-scancode-proprietary-license is ALWAYS a blocking error.
+    
+    Uncertain licenses (warnings) include:
     - LicenseRef-scancode-unknown-*
-    - LicenseRef-scancode-proprietary-*
     - LicenseRef-scancode-warranty-*
     - Any other LicenseRef-scancode-* that's not in the known permissive list
     
@@ -148,6 +149,10 @@ def is_uncertain_license_issue(issue: str) -> bool:
     Returns:
         bool: True if the issue is ONLY about uncertain licenses, False otherwise.
     """
+    # SPECIAL CASE: Proprietary licenses are ALWAYS blocking errors
+    if "LicenseRef-scancode-proprietary-license" in issue:
+        return False
+    
     # Extract the license expression from the issue
     if "Incompatible license added:" in issue:
         license_expr = issue.split("Incompatible license added:")[1].strip()
