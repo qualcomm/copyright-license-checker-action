@@ -85,6 +85,13 @@ def beautify_output(flagged_files: dict, warning_files: dict, license: str, log_
     output.append(f"{log_prefix} ├───────────────────────────────────────────┤")
     output.append(f"{log_prefix} │ Top level/default license of the repo is {license}")
     output.append(f"{log_prefix} ├───────────────────────────────────────────┤")
+    
+    # Add COMPLIANCE.md reference if there are any issues
+    if flagged_files or warning_files:
+        output.append(f"{log_prefix} │")
+        output.append(f"{log_prefix} │ 📖 For more information, see: COMPLIANCE.md")
+        output.append(f"{log_prefix} │    https://github.com/targoy-qti/copyright-license-checker-action/blob/main/COMPLIANCE.md")
+        output.append(f"{log_prefix} ├───────────────────────────────────────────┤")
 
     # Print blocking errors first
     if flagged_files:
