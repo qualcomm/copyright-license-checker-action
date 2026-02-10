@@ -132,21 +132,23 @@ def beautify_output(flagged_files: dict, warning_files: dict, license: str, log_
 
 def is_uncertain_license_issue(issue: str) -> bool:
     """
-    Check if a license issue is ONLY related to uncertain/unknown licenses.
-    Only treats it as a warning if the unknown license is the sole problem.
-    If there are other incompatible licenses, it remains a blocking error.
+    Check if a license issue is ONLY related to truly unknown/uncertain licenses.
+    Only treats it as a warning if the license cannot be identified by scancode.
     
-    Uncertain licenses include:
+    Warnings (truly unknown):
     - LicenseRef-scancode-unknown-*
-    - LicenseRef-scancode-proprietary-*
-    - LicenseRef-scancode-warranty-*
-    - Any other LicenseRef-scancode-* that's not in the known permissive list
+    - LicenseRef-scancode-warranty-disclaimer (just a disclaimer, not a license)
+    
+    Blocking errors (known to be incompatible):
+    - LicenseRef-scancode-proprietary-* (proprietary/non-free)
+    - Known copyleft licenses (GPL, AGPL, etc.)
+    - Any other identifiable incompatible license
     
     Args:
         issue (str): The license issue string.
     
     Returns:
-        bool: True if the issue is ONLY about uncertain licenses, False otherwise.
+        bool: True if the issue is ONLY about truly unknown licenses, False otherwise.
     """
     # Extract the license expression from the issue
     if "Incompatible license added:" in issue:
@@ -155,10 +157,10 @@ def is_uncertain_license_issue(issue: str) -> bool:
         # For license change issues, check the added license
         license_expr = issue.split("and license added:")[1].strip()
     else:
-        # For other issue types, check if it contains LicenseRef-scancode
-        return "LicenseRef-scancode-" in issue
+        # For other issue types, check if it contains unknown pattern
+        return "LicenseRef-scancode-unknown" in issue
     
-    # Parse the license expression to check if ALL licenses are unknown/uncertain
+    # Parse the license expression to check if ALL licenses are truly unknown
     # Remove parentheses and split by AND/OR
     licenses = []
     for part in license_expr.replace('(', '').replace(')', '').split(' AND '):
@@ -167,26 +169,35 @@ def is_uncertain_license_issue(issue: str) -> bool:
             if lic:
                 licenses.append(lic)
     
-    # Check if all licenses are unknown/uncertain
+    # Check if all licenses are truly unknown
     if not licenses:
         return False
     
-    # A license is considered uncertain if:
-    # 1. It starts with LicenseRef-scancode- AND
-    # 2. It's not in the known permissive list (like LicenseRef-scancode-unicode)
-    def is_uncertain_license(lic: str) -> bool:
-        if not lic.startswith('LicenseRef-scancode-'):
-            return False
-        # Check if it's a known permissive LicenseRef
+    # A license is considered "truly unknown" (warning) only if:
+    # 1. It's LicenseRef-scancode-unknown-* OR
+    # 2. It's LicenseRef-scancode-warranty-disclaimer (just a disclaimer)
+    # 
+    # Everything else is a blocking error, including:
+    # - LicenseRef-scancode-proprietary-* (known to be proprietary)
+    # - Known licenses like GPL, AGPL, etc.
+    def is_truly_unknown(lic: str) -> bool:
+        # Known permissive LicenseRef licenses are OK
         if lic in PERMISSIVE_LICENSES:
             return False
-        return True
+        # Truly unknown licenses (scancode couldn't identify them)
+        if 'unknown' in lic.lower():
+            return True
+        # Warranty disclaimers are not licenses, just warnings
+        if 'warranty-disclaimer' in lic.lower():
+            return True
+        # Everything else is a blocking error (including proprietary)
+        return False
     
-    # If ALL licenses are uncertain, it's a warning
-    # If ANY license is a known incompatible license (like GPL), it's an error
-    all_uncertain = all(is_uncertain_license(lic) for lic in licenses)
+    # If ALL licenses are truly unknown, it's a warning
+    # If ANY license is identifiable (including proprietary), it's an error
+    all_truly_unknown = all(is_truly_unknown(lic) for lic in licenses)
     
-    return all_uncertain
+    return all_truly_unknown
 
 
 def main() -> None:
