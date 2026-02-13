@@ -79,17 +79,21 @@ def beautify_output(flagged_files: dict, warning_files: dict, license: str, log_
         license (str) : The default/top level license of the repo
         log_prefix (str): The prefix to use for logging.
     """
+    # Only show the report header if there are issues to report
+    if not flagged_files and not warning_files:
+        print(f"{log_prefix} ✅ No license or copyright issues detected")
+        sys.exit(0)
+    
     output = []
     output.append(f"{log_prefix} ┌───────────────────────────────────────────┐")
     output.append(f"{log_prefix} │           **Flagged Files Report**         │")
     output.append(f"{log_prefix} ├───────────────────────────────────────────┤")
     
-    # Add COMPLIANCE.md reference if there are any issues
-    if flagged_files or warning_files:
-        output.append(f"{log_prefix} │")
-        output.append(f"{log_prefix} │ 📖 For more information, see: COMPLIANCE.md")
-        output.append(f"{log_prefix} │    https://github.com/qualcomm/copyright-license-checker-action/blob/main/COMPLIANCE.md")
-        output.append(f"{log_prefix} ├───────────────────────────────────────────┤")
+    # Add COMPLIANCE.md reference
+    output.append(f"{log_prefix} │")
+    output.append(f"{log_prefix} │ 📖 For more information, see: COMPLIANCE.md")
+    output.append(f"{log_prefix} │    https://github.com/qualcomm/copyright-license-checker-action/blob/main/COMPLIANCE.md")
+    output.append(f"{log_prefix} ├───────────────────────────────────────────┤")
 
     # Print blocking errors first
     if flagged_files:
@@ -132,9 +136,6 @@ def beautify_output(flagged_files: dict, warning_files: dict, license: str, log_
                 for issue in issues['copyright_issues']:
                     output.append(f"{log_prefix} │ │  • {issue}")
             output.append(f"{log_prefix} │ └─────────────────────────────────────────")
-
-    if not flagged_files and not warning_files:
-        output.append(f"{log_prefix} │ ✅ **No issues detected**")
     
     output.append(f"{log_prefix} └───────────────────────────────────────────┘")
 
