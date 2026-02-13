@@ -207,16 +207,22 @@ class LicenseChecker:
 
             issues = []
             if change['change_type'] == 'MODIFIED' or change['change_type'] == 'ADDED':
+                # Check if licenses changed
                 if added_licenses and deleted_licenses and set(added_licenses) != set(deleted_licenses):
-                    issues.append(f"License deleted: {deleted_licenses} and license added: {added_licenses}")
-                if added_licenses and not self.is_license_permissive(added_licenses):
+                    # Only flag if the new license is NOT permissive
+                    # This allows dual-license scenarios like "BSD-3-Clause OR GPL-2.0-only"
+                    # where at least one option is permissive
+                    if not self.is_license_permissive(added_licenses):
+                        issues.append(f"License deleted: {deleted_licenses} and license added: {added_licenses}")
+                elif added_licenses and not self.is_license_permissive(added_licenses):
+                    # New license added that is not permissive
                     issues.append(f"Incompatible license added: {added_licenses}")
-                if deleted_licenses and not added_licenses:
+                elif deleted_licenses and not added_licenses:
+                    # License was removed without replacement
                     issues.append(f"License deleted: {deleted_licenses}")
+                
                 if issues:
                     flagged_files[change['path_name']] = issues
-                else:
-                    pass
             if change['change_type'] == 'ADDED':
                 if not added_licenses and self.is_source_file(change['path_name']):
                     issues.append(f"No license added for source file: {change['path_name']}")
