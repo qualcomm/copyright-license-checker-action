@@ -13,7 +13,7 @@ To use this action, you need to create a GitHub Action workflow file in your rep
 ```yml
 name: Run Copyright and License Check
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize]
 
 jobs:
