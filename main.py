@@ -1,5 +1,10 @@
 import logging
 import sys
+import os
+import json
+import subprocess
+import tempfile
+from pathlib import Path
 import scanner.config as config
 from scanner.patch import Patch
 from scanner.license_scancode import LicenseChecker
@@ -51,10 +56,56 @@ COPYLEFT_LICENSES = [
     "AGPL-3.0-or-later"
 ]
 
+def detect_license_from_file(license_file_path: str) -> str:
+    """
+    Detect the license from a LICENSE file using scancode.
+    
+    Args:
+        license_file_path (str): Path to the LICENSE file.
+    
+    Returns:
+        str: The detected SPDX license identifier, or None if detection fails.
+    """
+    if not os.path.exists(license_file_path):
+        return None
+    
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_file = os.path.join(tmpdir, 'scancode_results.json')
+            
+            # Run scancode on the LICENSE file
+            subprocess.run([
+                'scancode',
+                '--license',
+                '--strip-root',
+                '--quiet',
+                '--json-pp', output_file,
+                license_file_path
+            ], check=True, capture_output=True)
+            
+            # Parse the results
+            with open(output_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Extract the license from the first file result
+            for file_result in data.get('files', []):
+                if file_result['type'] == 'file':
+                    license_detections = file_result.get('license_detections', [])
+                    if license_detections:
+                        # Return the SPDX license expression
+                        return license_detections[0].get('license_expression_spdx', None)
+            
+            return None
+    except Exception as e:
+        print(f"Warning: Failed to detect license from {license_file_path}: {e}")
+        return None
+
+
 def get_license(repo_name: str) -> str:
     """
-    Search for the repository name in the config file and return its license.
-    the repository name is not found, return the default license (BSD-3-Clause-Clear).
+    Detect the license from the project's LICENSE file.
+    Falls back to config file lookup if LICENSE file is not found or detection fails.
+    If neither works, returns the default license (BSD-3-Clause-Clear).
 
     Args:
         repo_name (str): The name of the repository.
@@ -62,10 +113,33 @@ def get_license(repo_name: str) -> str:
     Returns:
         str: The license of the repository.
     """
+    # Try to find and read LICENSE file in current directory
+    license_file_candidates = ['LICENSE', 'LICENSE.txt', 'LICENSE.md', 'COPYING']
+    
+    detected_license = None
+    for license_file in license_file_candidates:
+        license_path = os.path.join(os.getcwd(), license_file)
+        if os.path.exists(license_path):
+            print(f"{LOG_PREFIX} Found license file: {license_file}")
+            detected_license = detect_license_from_file(license_path)
+            if detected_license:
+                print(f"{LOG_PREFIX} Detected license: {detected_license}")
+                # If the detected license contains "bsd" (case-insensitive), treat it as default license
+                if "bsd" in detected_license.lower():
+                    print(f"{LOG_PREFIX} License contains 'bsd', using default license: BSD-3-Clause-Clear")
+                    return "BSD-3-Clause-Clear"
+                return detected_license
+            break
+    
+    # Fallback to config file lookup
+    print(f"{LOG_PREFIX} License file not found or detection failed, checking config...")
     for project in config.data['projects']:
         if repo_name.endswith(f"/{project['PROJECT_NAME']}") or repo_name == project['PROJECT_NAME']:
+            print(f"{LOG_PREFIX} Using license from config: {project['MARKINGS']}")
             return project['MARKINGS']
-    # Return the default license if the repository name is not found
+    
+    # Return the default license if nothing else works
+    print(f"{LOG_PREFIX} Using default license: BSD-3-Clause-Clear")
     return "BSD-3-Clause-Clear"
 
 
