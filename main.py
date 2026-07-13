@@ -41,7 +41,7 @@ COPYLEFT_LICENSES = [
     "GPL-1.0-or-later",
     "GPL-2.0-only",
     "GPL-2.0-or-later",
-    "GPL-3.0-only"
+    "GPL-3.0-only",
     "GPL-3.0",
     "GPL-3.0-or-later",
     "AGPL-3.0",
