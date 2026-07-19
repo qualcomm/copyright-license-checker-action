@@ -33,7 +33,9 @@ PERMISSIVE_LICENSES = [
     "ISC",
     "CC0-1.0",
     "ICU",
-    "LicenseRef-scancode-unicode"
+    "LicenseRef-scancode-unicode",
+    "Apache-2.0 WITH LLVM-exception",
+    "Apache-2.0 WITH LLVM-exception AND Apache-2.0 AND LLVM-exception",
 ]
 
 COPYLEFT_LICENSES = [
@@ -114,7 +116,12 @@ def get_license(repo_name: str) -> str:
         str: The license of the repository.
     """
     # Try to find and read LICENSE file in current directory
-    license_file_candidates = ['LICENSE', 'LICENSE.txt', 'LICENSE.md', 'COPYING']
+    # Include both lowercase and uppercase variations for case-insensitive matching
+    license_file_candidates = [
+        'LICENSE', 'LICENSE.txt', 'LICENSE.TXT', 'LICENSE.md', 'LICENSE.MD',
+        'COPYING', 'COPYING.txt', 'COPYING.TXT',
+        'License', 'License.txt', 'License.md'
+    ]
     
     detected_license = None
     for license_file in license_file_candidates:
