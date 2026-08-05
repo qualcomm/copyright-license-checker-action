@@ -1,0 +1,36 @@
+name: 'Run full-repository Copyright and license check'
+description: 'A GitHub Action to scan every tracked source file in a repository for copyright and license compliance'
+inputs:
+  repo_name:
+    description: 'The name of the github repository (owner/repo)'
+    required: true
+  fail_on_findings:
+    description: 'Fail the run when blocking issues are found. Defaults to false (report-only).'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install pip-tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install pip-tools
+      shell: bash
+
+    - name: Install dependencies
+      run: pip install -r ${{ github.action_path }}/../requirements.txt
+      shell: bash
+
+    - name: Run full-repo scan
+      run: python "${{ github.action_path }}/../full_scan.py" "${{ inputs.repo_name }}" "${{ inputs.fail_on_findings }}"
+      shell: bash
+
+branding:
+  icon: 'search'
+  color: 'blue'
