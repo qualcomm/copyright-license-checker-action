@@ -310,7 +310,18 @@ def main() -> None:
     elif license in COPYLEFT_LICENSES:
         allowed_licenses = COPYLEFT_LICENSES
     else:
-        allowed_licenses = [license]
+        # Handle complex license expressions (e.g., "GPL-2.0-only AND GPL-2.0-or-later")
+        # Parse the expression and include all component licenses
+        allowed_licenses = []
+        for part in license.replace('(', '').replace(')', '').split(' AND '):
+            for lic in part.split(' OR '):
+                lic = lic.strip()
+                if lic:
+                    allowed_licenses.append(lic)
+        
+        # If no licenses were parsed, use the original license
+        if not allowed_licenses:
+            allowed_licenses = [license]
 
     license_checker = LicenseChecker(patch, repo_name, allowed_licenses)
     copyright_checker = CopyrightChecker(patch)
