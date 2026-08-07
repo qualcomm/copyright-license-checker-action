@@ -41,6 +41,9 @@ class LicenseChecker:
         For OR expressions: At least one option must be permissive
         For AND expressions: All components must be permissive
         
+        Special GPL compatibility handling:
+        - If project has GPL-X.Y-or-later, files with GPL-X.Y-only or GPL-X.Y-or-later are compatible
+        
         Args:
             scancode_license (str): The SPDX license expression to check.
 
@@ -88,8 +91,23 @@ class LicenseChecker:
             else:
                 # Single license in this AND group - must be permissive
                 lic = and_group.strip('()')
-                if lic not in self.permissive_licenses:
-                    return False
+                
+                # Check GPL "or-later" compatibility
+                # If the file has GPL-X.Y-only or GPL-X.Y-or-later, and the project allows GPL-X.Y-or-later, it's compatible
+                if not lic in self.permissive_licenses:
+                    # Check if this is a GPL license compatibility case
+                    is_compatible = False
+                    for allowed_lic in self.permissive_licenses:
+                        if '-or-later' in allowed_lic:
+                            # Extract base license (e.g., "GPL-2.0" from "GPL-2.0-or-later")
+                            base_license = allowed_lic.replace('-or-later', '')
+                            # Check if file license is compatible
+                            if lic == allowed_lic or lic == f"{base_license}-only" or lic == base_license:
+                                is_compatible = True
+                                break
+                    
+                    if not is_compatible:
+                        return False
         
         return True
 
