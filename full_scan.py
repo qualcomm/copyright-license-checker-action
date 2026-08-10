@@ -1,5 +1,8 @@
 import logging
+import os
 import sys
+
+import click
 
 from main import get_license, PERMISSIVE_LICENSES, COPYLEFT_LICENSES
 from scanner.full_repo import RepoScan
@@ -17,14 +20,20 @@ tracked source file in the working tree, which makes it suitable for:
     * establishing a baseline on repos onboarded with existing history.
 
 Usage:
-    python full_scan.py <repo_name> <fail_on_findings>
-
-    Both arguments are always supplied by the action (full-scan/action.yml
-    defaults fail_on_findings to 'false'), so they are read positionally.
+    python full_scan.py <repo_name> <fail_on_findings> [--repo-path PATH]
 
     repo_name        -- github "owner/repo", used to resolve the repo license.
     fail_on_findings -- "true" to exit non-zero when blocking issues are found;
                         anything else reports only and exits 0.
+    --repo-path      -- optional path to the repository working tree to scan.
+                        Defaults to the current directory, which is what the
+                        action uses (it runs with cwd = the consumer checkout).
+                        Provide this to scan a local clone without cd-ing into
+                        it, e.g. `python full_scan.py owner/repo true
+                        --repo-path ~/clones/some-repo`.
+
+    repo_name and fail_on_findings stay positional so the existing action
+    invocation (full-scan/action.yml) keeps working unchanged.
 """
 
 LOG_PREFIX = "< full-repo license/copyright check >"
@@ -112,15 +121,40 @@ def beautify_scan_output(flagged_files: dict, warning_files: dict,
     sys.exit(0)
 
 
-def main() -> None:
+@click.command()
+@click.argument("repo_name")
+@click.argument("fail_on_findings")
+@click.option(
+    "--repo-path",
+    default=".",
+    show_default=True,
+    type=click.Path(exists=True, file_okay=False, resolve_path=True),
+    help="Path to the repository working tree to scan. Defaults to the current "
+         "directory, which is what the action uses (it runs with cwd = the "
+         "consumer checkout). Provide this to scan a local clone without "
+         "cd-ing into it.",
+)
+def main(repo_name: str, fail_on_findings: str, repo_path: str) -> None:
     """
-    The main function of the full-repo scan.
+    Scan every tracked source file in a repository for copyright and license
+    compliance.
+
+    REPO_NAME is the GitHub "owner/repo", used to resolve the repo license.
+    FAIL_ON_FINDINGS is "true" to exit non-zero when blocking issues are found;
+    anything else reports only and exits 0. Both stay positional so the existing
+    action invocation (full-scan/action.yml) keeps working unchanged.
     """
     # Clamp chatty logging from license_identifier
     logging.basicConfig(level=logging.WARNING)
 
-    repo_name = sys.argv[1]
-    fail_on_findings = sys.argv[2].strip().lower() == "true"
+    fail_on_findings = fail_on_findings.strip().lower() == "true"
+
+    # Both get_license (reads LICENSE from cwd) and RepoScan (git ls-files with
+    # cwd=".") are relative to the current directory. click.Path already
+    # validated repo_path (exists, is a directory) and resolved it to an
+    # absolute path, so chdir once here points both at the requested repo --
+    # and keeps main.py (get_license) untouched.
+    os.chdir(repo_path)
 
     license = get_license(repo_name)
     if license in PERMISSIVE_LICENSES:
@@ -139,4 +173,4 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    main()
+    main()  # pylint: disable=no-value-for-parameter
