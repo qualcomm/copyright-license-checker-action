@@ -54,6 +54,64 @@ def split_license_expression(expression: str) -> list:
     return licenses
 
 
+# scancode attaches short "bare word" license references -- e.g. the word "gpl"
+# in a comment or an identifier such as `lgpl_gpl_bsd` (its tokenizer splits on
+# underscores) -- as license matches. When such a reference sits far from any
+# real license, scancode demotes it to a low-confidence "license clue" and keeps
+# it out of detected_license_expression_spdx. But when it lands ADJACENT to a
+# genuine license header, scancode merges it into that detection and pollutes the
+# expression -- e.g. a clean BSD file whose header comment mentions gpl becomes
+# "BSD-3-Clause-Clear AND GPL-1.0-or-later AND LGPL-2.0-or-later", producing a
+# false "incompatible license" finding. To avoid that we rebuild the expression
+# from CONFIDENT matches only: an SPDX-identifier tag, or a match covering at
+# least this many tokens. Score is NOT a usable filter here (a 2-token "lgpl"
+# reference can score 100); matched token length is the reliable discriminator.
+# The value is 3 because measured bare-word noise reaches 2 tokens (e.g. a "lgpl"
+# reference matched via lgpl-2.0-plus_360.RULE), so 3 is the lowest floor that
+# drops all of it. SPDX-identifier tags are kept regardless of length, so real
+# SPDX headers are never affected by this threshold.
+MIN_CONFIDENT_MATCH_LENGTH = 3
+
+
+def confident_license_expression(file_result: dict) -> str:
+    """
+    Rebuild a file's SPDX license expression from confident matches only.
+
+    Drops the short bare-word license references that scancode merged into a
+    detection when they sat next to a real header (see MIN_CONFIDENT_MATCH_LENGTH
+    for the rationale), keeping SPDX-identifier tags and matches that cover a
+    meaningful number of tokens.
+
+    Args:
+        file_result (dict): One scancode 'files' entry.
+
+    Returns:
+        str: The combined SPDX expression built from confident matches, or None
+            when no confident license match remains.
+    """
+    kept = []
+    for detection in file_result.get('license_detections', []):
+        for match in detection.get('matches', []):
+            is_spdx_tag = match.get('matcher') == '1-spdx-id'
+            long_enough = (match.get('matched_length') or 0) >= MIN_CONFIDENT_MATCH_LENGTH
+            if not (is_spdx_tag or long_enough):
+                continue
+            expr = match.get('spdx_license_expression')
+            if expr:
+                kept.append(expr)
+
+    if not kept:
+        return None
+
+    # Combine distinct sub-expressions with AND -- scancode's own default when a
+    # file carries multiple detections -- parenthesizing any OR group so the
+    # AND/OR structure survives for is_expression_permissive.
+    parts = []
+    for expr in dict.fromkeys(kept):
+        parts.append(f'({expr})' if ' OR ' in expr else expr)
+    return ' AND '.join(parts)
+
+
 class FullScanner:
     """
     Class to scan every file surfaced by RepoScan (git-tracked, and optionally
@@ -261,7 +319,10 @@ class FullScanner:
                           f"for {path}: {scan_errors}", file=sys.stderr)
 
                 results[path] = {
-                    'license': file_result.get('detected_license_expression_spdx'),
+                    # Rebuilt from confident matches only, so short bare-word
+                    # license references adjacent to a real header do not create
+                    # a false "incompatible license" (see confident_license_expression).
+                    'license': confident_license_expression(file_result),
                     # Keep only truthy statements: a scancode detection with a
                     # missing/empty 'copyright' value would otherwise leave a
                     # [None]/[''] list -- truthy, so `not copyrights` is False --
