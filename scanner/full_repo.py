@@ -26,34 +26,50 @@ EXCLUDED_EXTENSIONS = ('.patch', '.bb', '.md', '.json', '.yml')
 
 class RepoScan:
     """
-    Class to represent the set of tracked source files in a working tree.
+    Class to represent the set of source files in a working tree to scan.
+
+    By default this is the git-tracked source files; with include_untracked it
+    also covers untracked-but-not-ignored files (see __init__).
     """
 
-    def __init__(self, root: str = ".") -> None:
+    def __init__(self, root: str = ".", include_untracked: bool = False) -> None:
         """
-        Initialize the RepoScan object by listing tracked files under root.
+        Initialize the RepoScan object by listing the repository's files under
+        root.
 
         Args:
             root (str): Path to the repository working tree. Defaults to the
                 current directory (where the action checks out the repo).
+            include_untracked (bool): When False (the default), only git-tracked
+                files are listed (`git ls-files`). When True, untracked files
+                are included as well -- still honoring .gitignore -- via
+                `git ls-files --cached --others --exclude-standard`, so files
+                that were added but not yet committed are also scanned. Ignored
+                files (build artifacts, virtualenvs, etc.) are never listed in
+                either mode.
         """
         self.root = root
         self.ignore_config = IgnoreConfig()
 
-        # git ls-files gives us exactly the tracked files, respecting
-        # .gitignore, without walking untracked build artifacts.
+        # git ls-files lists tracked files, respecting .gitignore, without
+        # walking untracked build artifacts. Adding --others --exclude-standard
+        # additionally picks up untracked-but-not-ignored files (e.g. added but
+        # not yet committed) while still skipping anything .gitignore excludes.
+        ls_files_cmd = ['git', 'ls-files']
+        if include_untracked:
+            ls_files_cmd += ['--cached', '--others', '--exclude-standard']
         result = subprocess.run(
-            ['git', 'ls-files'],
+            ls_files_cmd,
             cwd=self.root,
             check=True,
             capture_output=True,
             text=True,
         )
-        tracked_files = [line for line in result.stdout.splitlines() if line]
+        listed_files = [line for line in result.stdout.splitlines() if line]
 
         # Build the list of files the full-repo scan should cover.
         self.files = []
-        for path_name in tracked_files:
+        for path_name in listed_files:
             # Skip files that match hardcoded exclusions or config-based exclusions
             if path_name.endswith(EXCLUDED_EXTENSIONS):
                 continue

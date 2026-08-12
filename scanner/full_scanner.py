@@ -51,8 +51,8 @@ def split_license_expression(expression: str) -> list:
 
 class FullScanner:
     """
-    Class to scan every tracked source file in a repository for license and
-    copyright compliance.
+    Class to scan every source file surfaced by RepoScan (git-tracked, and
+    optionally untracked-but-not-ignored) for license and copyright compliance.
     """
 
     def __init__(self, repo_scan: RepoScan, permissive_licenses: list) -> None:
@@ -60,7 +60,7 @@ class FullScanner:
         Initialize the FullScanner.
 
         Args:
-            repo_scan (RepoScan): The set of tracked source files to scan.
+            repo_scan (RepoScan): The set of source files to scan.
             permissive_licenses (list): Licenses considered allowed for this repo.
                 Also used to recognize known-permissive LicenseRef ids (e.g.
                 LicenseRef-scancode-unicode) so they are not treated as uncertain.
@@ -266,7 +266,7 @@ class FullScanner:
 
     def run(self) -> tuple:
         """
-        Run the scan over all tracked source files.
+        Run the scan over all source files surfaced by RepoScan.
 
         Returns:
             tuple: (flagged_files, warning_files). Each is a dict mapping a file

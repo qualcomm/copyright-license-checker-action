@@ -14,23 +14,29 @@ Entry point for the full-repository scan.
 This is a SEPARATE entry point from main.py, which runs the pull-request patch
 scan. The patch scan looks only at a commit diff, so on a repo enabled after
 many commits it never inspects the legacy files. This full-repo scan walks every
-tracked source file in the working tree, which makes it suitable for:
+source file in the working tree, which makes it suitable for:
 
     * periodic (e.g. scheduled) compliance checks, and
     * establishing a baseline on repos onboarded with existing history.
 
+By default it scans git-tracked files only; --include-untracked widens the net
+to untracked-but-not-ignored files as well.
+
 Usage:
     python full_scan.py <repo_name> <fail_on_findings> [--repo-path PATH]
+                                                        [--include-untracked]
 
-    repo_name        -- github "owner/repo", used to resolve the repo license.
-    fail_on_findings -- "true" to exit non-zero when blocking issues are found;
-                        anything else reports only and exits 0.
-    --repo-path      -- optional path to the repository working tree to scan.
-                        Defaults to the current directory, which is what the
-                        action uses (it runs with cwd = the consumer checkout).
-                        Provide this to scan a local clone without cd-ing into
-                        it, e.g. `python full_scan.py owner/repo true
-                        --repo-path ~/clones/some-repo`.
+    repo_name          -- github "owner/repo", used to resolve the repo license.
+    fail_on_findings   -- "true" to exit non-zero when blocking issues are found;
+                          anything else reports only and exits 0.
+    --repo-path        -- optional path to the repository working tree to scan.
+                          Defaults to the current directory, which is what the
+                          action uses (it runs with cwd = the consumer checkout).
+                          Provide this to scan a local clone without cd-ing into
+                          it, e.g. `python full_scan.py owner/repo true
+                          --repo-path ~/clones/some-repo`.
+    --include-untracked -- also scan untracked files that are not .gitignore'd
+                          (not just git-tracked files). Off by default.
 
     repo_name and fail_on_findings stay positional so the existing action
     invocation (full-scan/action.yml) keeps working unchanged.
@@ -134,10 +140,23 @@ def beautify_scan_output(flagged_files: dict, warning_files: dict,
          "consumer checkout). Provide this to scan a local clone without "
          "cd-ing into it.",
 )
-def main(repo_name: str, fail_on_findings: str, repo_path: str) -> None:
+@click.option(
+    "--include-untracked",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Also scan untracked files that are not .gitignore'd, not just "
+         "git-tracked files (uses `git ls-files --cached --others "
+         "--exclude-standard`). Use this to catch files that were added but "
+         "not yet committed. Ignored files are still skipped.",
+)
+def main(repo_name: str, fail_on_findings: str, repo_path: str,
+         include_untracked: bool) -> None:
     """
-    Scan every tracked source file in a repository for copyright and license
-    compliance.
+    Scan a repository's source files for copyright and license compliance.
+
+    By default only git-tracked files are scanned; pass --include-untracked to
+    also cover untracked-but-not-ignored files.
 
     REPO_NAME is the GitHub "owner/repo", used to resolve the repo license.
     FAIL_ON_FINDINGS is "true" to exit non-zero when blocking issues are found;
@@ -164,7 +183,7 @@ def main(repo_name: str, fail_on_findings: str, repo_path: str) -> None:
     else:
         allowed_licenses = [license]
 
-    repo_scan = RepoScan()
+    repo_scan = RepoScan(include_untracked=include_untracked)
     scanner = FullScanner(repo_scan, allowed_licenses)
 
     flagged_files, warning_files = scanner.run()
