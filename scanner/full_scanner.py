@@ -27,6 +27,11 @@ already exist in the repository -- so it asks different questions:
 Uncertain / unknown licenses (LicenseRef-scancode-unknown*) are reported as
 non-blocking warnings, matching the semantics of main.is_uncertain_license_issue
 on the PR path.
+
+License-optional build files (RepoScan.LICENSE_OPTIONAL_EXTENSIONS -- .mk/.bp/.bb)
+are the exception to the first and third checks: a missing license header or
+missing copyright is NOT flagged for them, but an incompatible license they
+carry is still a blocking error and an uncertain one still warns.
 """
 
 
@@ -51,8 +56,10 @@ def split_license_expression(expression: str) -> list:
 
 class FullScanner:
     """
-    Class to scan every source file surfaced by RepoScan (git-tracked, and
-    optionally untracked-but-not-ignored) for license and copyright compliance.
+    Class to scan every file surfaced by RepoScan (git-tracked, and optionally
+    untracked-but-not-ignored) for license and copyright compliance. Source
+    files are fully checked; license-optional build files (.mk/.bp/.bb) are
+    checked only for an incompatible/uncertain license (see run).
     """
 
     def __init__(self, repo_scan: RepoScan, permissive_licenses: list) -> None:
@@ -266,7 +273,11 @@ class FullScanner:
 
     def run(self) -> tuple:
         """
-        Run the scan over all source files surfaced by RepoScan.
+        Run the scan over all files surfaced by RepoScan. Source files are
+        checked for a missing/incompatible license and a missing copyright;
+        license-optional build files (.mk/.bp/.bb) skip the missing-license and
+        missing-copyright findings but are still flagged for an incompatible
+        license.
 
         Returns:
             tuple: (flagged_files, warning_files). Each is a dict mapping a file
@@ -286,13 +297,19 @@ class FullScanner:
                 # scancode returned nothing for this file (unreadable / skipped).
                 continue
 
+            # License-optional build files (.mk/.bp/.bb) relax the "missing
+            # license" and "missing copyright" findings, but an incompatible or
+            # uncertain license they DO carry is still classified normally.
+            license_optional = self.repo_scan.is_license_optional(path)
+
             error_license = []
             warning_license = []
 
             license_expr = result['license']
             if not license_expr:
                 # Missing license header -- no detectable license anywhere.
-                error_license.append("No license header found")
+                if not license_optional:
+                    error_license.append("No license header found")
             else:
                 severity = self.classify_license(license_expr)
                 if severity == 'error':
@@ -307,6 +324,10 @@ class FullScanner:
                 # not "absent" -- do NOT report a missing copyright, or we would
                 # emit a false blocking finding for a file that may well have a
                 # copyright. License detection is independent and still applies.
+                pass
+            elif license_optional:
+                # License-optional build files are not required to carry a
+                # copyright statement.
                 pass
             elif not result['copyrights']:
                 # Missing copyright -- no copyright statement anywhere in the file.

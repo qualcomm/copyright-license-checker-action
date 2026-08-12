@@ -111,6 +111,12 @@ The following scenarios will **BLOCK** your build and require remediation before
 
 **Compliance Impact:** MEDIUM - New code without licenses creates ambiguity about usage rights
 
+**Full-repository scan exception — license-optional build files:** In the
+full-repository scan, build-system files (`.mk`, `.bp`, `.bb`) are exempt from
+both the missing-license and missing-copyright requirements (they routinely have
+neither). A present-but-incompatible license in one of them is still a blocking
+error. See "Full-Repository Scan: License-Optional Build Files" below.
+
 ---
 
 ### 5. Copyright Deletion
@@ -227,6 +233,28 @@ When scancode identifies a file as having ONLY a proprietary license (not mixed 
 **Note:** If `LicenseRef-scancode-proprietary-license` appears mixed with other uncertain licenses (e.g., `LicenseRef-scancode-unknown-*`), it's treated as a warning for manual review, as this may indicate scancode detection ambiguity rather than actual proprietary code.
 
 **Compliance Impact:** HIGH - Proprietary code in open-source repositories creates licensing conflicts
+
+---
+
+## Full-Repository Scan: License-Optional Build Files
+
+This applies only to the **full-repository scan** (the whole-tree audit), not the
+pull-request patch check.
+
+Build-system files are scanned under a relaxed "license-optional" tier, because
+they routinely ship without a license header or copyright:
+
+**Extensions:** `.mk` (Makefiles), `.bp` (Android blueprints), `.bb` (BitBake recipes)
+
+| Situation | Result |
+|---|---|
+| No license header | ✅ OK (not flagged) |
+| No copyright statement | ✅ OK (not flagged) |
+| Present incompatible license (e.g. `GPL-2.0-only` under a BSD repo) | 🚨 **BLOCKING** |
+| Uncertain `LicenseRef-scancode-*` license | ⚠️ WARNING (non-blocking) |
+
+In other words: these files are never *required* to carry licensing information,
+but if they do declare a license it must still be compatible with the repository.
 
 ---
 

@@ -14,7 +14,8 @@ Entry point for the full-repository scan.
 This is a SEPARATE entry point from main.py, which runs the pull-request patch
 scan. The patch scan looks only at a commit diff, so on a repo enabled after
 many commits it never inspects the legacy files. This full-repo scan walks every
-source file in the working tree, which makes it suitable for:
+source file (and license-optional build file) in the working tree, which makes
+it suitable for:
 
     * periodic (e.g. scheduled) compliance checks, and
     * establishing a baseline on repos onboarded with existing history.
@@ -155,8 +156,10 @@ def main(repo_name: str, fail_on_findings: str, repo_path: str,
     """
     Scan a repository's source files for copyright and license compliance.
 
-    By default only git-tracked files are scanned; pass --include-untracked to
-    also cover untracked-but-not-ignored files.
+    Source files are fully checked; build files (.mk/.bp/.bb) are license-optional
+    -- scanned for an incompatible license but not required to carry a header or
+    copyright. By default only git-tracked files are scanned; pass
+    --include-untracked to also cover untracked-but-not-ignored files.
 
     REPO_NAME is the GitHub "owner/repo", used to resolve the repo license.
     FAIL_ON_FINDINGS is "true" to exit non-zero when blocking issues are found;

@@ -2,14 +2,18 @@ import subprocess
 from scanner.ignore_config import IgnoreConfig
 
 """
-Module to enumerate the tracked source files of a working tree for a full-repo
-scan.
+Module to enumerate the source files of a working tree for a full-repo scan.
 
 Unlike scanner.patch.Patch -- which parses a git diff into added/deleted lines
 for the pull-request path -- this module lists the *whole* files that currently
 exist in the repository so they can be scanned in their entirety. This is what
 lets a full-repo scan catch legacy files that were committed before the checker
 was enabled and therefore never appeared in any scanned PR diff.
+
+Two tiers of files are listed: fully-checked source files (SOURCE_FILE_EXTENSIONS)
+and "license-optional" build-system files (LICENSE_OPTIONAL_EXTENSIONS, e.g.
+.mk/.bp/.bb) that are scanned for an incompatible license but are not required to
+carry a license header or copyright. See FullScanner.run for the relaxed handling.
 """
 
 # Source file extensions the full-repo scan covers. Kept in sync with
@@ -19,17 +23,28 @@ SOURCE_FILE_EXTENSIONS = (
     '.rb', '.go', '.swift', '.kt', '.kts', '.sh'
 )
 
+# Build-system files scanned under a relaxed "license-optional" tier: a MISSING
+# license header or MISSING copyright is NOT flagged (these files routinely have
+# neither), but a present-but-incompatible license is STILL a blocking error and
+# an uncertain license still warns -- classify_license runs normally whenever a
+# license is actually detected. See FullScanner.run.
+LICENSE_OPTIONAL_EXTENSIONS = ('.mk', '.bp', '.bb')
+
 # Extensions excluded from the checks, mirroring scanner.patch.Patch's hardcoded
 # exclusions so the full-repo and PR paths skip the same non-source files.
-EXCLUDED_EXTENSIONS = ('.patch', '.bb', '.md', '.json', '.yml')
+# NOTE: .bb was moved to LICENSE_OPTIONAL_EXTENSIONS -- on the full-repo scan it
+# is now scanned for incompatible licenses rather than skipped outright. The PR
+# path (scanner/patch.py) still excludes .bb and is intentionally left unchanged.
+EXCLUDED_EXTENSIONS = ('.patch', '.md', '.json', '.yml')
 
 
 class RepoScan:
     """
-    Class to represent the set of source files in a working tree to scan.
+    Class to represent the set of files in a working tree to scan: fully-checked
+    source files plus license-optional build files (.mk/.bp/.bb).
 
-    By default this is the git-tracked source files; with include_untracked it
-    also covers untracked-but-not-ignored files (see __init__).
+    By default this is the git-tracked files; with include_untracked it also
+    covers untracked-but-not-ignored files (see __init__).
     """
 
     def __init__(self, root: str = ".", include_untracked: bool = False) -> None:
@@ -77,16 +92,36 @@ class RepoScan:
             if self.ignore_config.is_excluded(path_name):
                 continue
 
-            if not path_name.endswith(SOURCE_FILE_EXTENSIONS):
+            # Keep fully-checked source files AND relaxed license-optional build
+            # files; drop everything else. (str.endswith accepts a tuple of
+            # suffixes, so the concatenated tuple matches either tier.)
+            if not path_name.endswith(SOURCE_FILE_EXTENSIONS + LICENSE_OPTIONAL_EXTENSIONS):
                 continue
 
             self.files.append(path_name)
 
     def get_files(self) -> list:
         """
-        Get the list of tracked source file paths to scan.
+        Get the list of file paths to scan (source files and license-optional
+        build files).
 
         Returns:
             list: A list of repository-relative file paths.
         """
         return self.files
+
+    def is_license_optional(self, path_name: str) -> bool:
+        """
+        Report whether a path is a "license-optional" build file (.mk/.bp/.bb).
+
+        These files are scanned, but a missing license header or missing
+        copyright is not flagged; only a present-but-incompatible (or uncertain)
+        license is reported. See FullScanner.run for the relaxed handling.
+
+        Args:
+            path_name (str): A repository-relative file path.
+
+        Returns:
+            bool: True if the path is in the license-optional tier.
+        """
+        return path_name.endswith(LICENSE_OPTIONAL_EXTENSIONS)

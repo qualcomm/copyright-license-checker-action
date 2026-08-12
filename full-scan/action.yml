@@ -1,5 +1,5 @@
 name: 'Run full-repository Copyright and license check'
-description: 'A GitHub Action to scan every tracked source file in a repository for copyright and license compliance'
+description: 'A GitHub Action to scan every tracked source file (and license-optional build file) in a repository for copyright and license compliance'
 inputs:
   repo_name:
     description: 'The name of the github repository (owner/repo)'
