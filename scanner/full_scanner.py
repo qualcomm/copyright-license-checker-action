@@ -262,9 +262,15 @@ class FullScanner:
 
                 results[path] = {
                     'license': file_result.get('detected_license_expression_spdx'),
+                    # Keep only truthy statements: a scancode detection with a
+                    # missing/empty 'copyright' value would otherwise leave a
+                    # [None]/[''] list -- truthy, so `not copyrights` is False --
+                    # making an empty detection look like a present copyright and
+                    # silently suppressing the "No copyright statement found" check.
                     'copyrights': [
                         c.get('copyright')
                         for c in (file_result.get('copyrights') or [])
+                        if c.get('copyright')
                     ],
                     'scan_errors': scan_errors,
                 }
