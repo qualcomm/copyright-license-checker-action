@@ -306,23 +306,17 @@ class TestRunChangeTypeCoverageGaps(ScancodeMockMixin, unittest.TestCase):
         self.assertEqual(checker.run(), {})
 
 
-class TestLicenseComparisonTypeConfusion(ScancodeMockMixin, unittest.TestCase):
+class TestLicenseComparisonFix(ScancodeMockMixin, unittest.TestCase):
     """
-    Documents the string/list type confusion at license_scancode.py:229.
-
-    detect_licenses_batch returns license expressions as strings, but run()
-    compares them with set(added) != set(deleted) — which compares sets of
-    *characters*, not licenses. Anagram pairs therefore compare equal. This test
-    pins the buggy behavior so the follow-up fix has a visible before/after.
+    Regression test for a fixed string/list type confusion at
+    license_scancode.py:229. detect_licenses_batch returns license expressions
+    as strings, but run() used to compare them with set(added) != set(deleted)
+    -- comparing sets of *characters*, not licenses, so anagram pairs like
+    'MIT'/'TIM' compared equal. Now compared as plain strings.
     """
 
-    def test_anagram_licenses_compare_equal(self):
-        """
-        'MIT' and 'TIM' are character-set-equal, so the license-change rule does
-        not fire and the expression falls through to the permissive check.
-        'TIM' is not permissive, so it is reported as an addition rather than a
-        change — evidence the set() comparison is not comparing licenses.
-        """
+    def test_anagram_licenses_are_treated_as_a_real_change(self):
+        """'MIT' and 'TIM' are not the same license and must be flagged as such."""
         self.install_scancode_mock({"0_added.txt": "TIM", "0_deleted.txt": "MIT"})
         checker = LicenseChecker(
             make_patch_obj([make_change("+TIM text\n-MIT text\n")]),
@@ -330,8 +324,7 @@ class TestLicenseComparisonTypeConfusion(ScancodeMockMixin, unittest.TestCase):
             PERMISSIVE,
         )
         flagged = checker.run()
-        self.assertIn("Incompatible license added: TIM", flagged["src/foo.c"][0])
-        self.assertNotIn("License deleted", flagged["src/foo.c"][0])
+        self.assertIn("License deleted: MIT and license added: TIM", flagged["src/foo.c"][0])
 
 
 if __name__ == "__main__":

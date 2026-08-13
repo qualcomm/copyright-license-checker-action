@@ -173,7 +173,7 @@ class LicenseChecker:
                 if filename not in file_map:
                     continue
 
-                licenses = []
+                licenses = ""
                 if len(file_result.get('license_detections', [])):
                     licenses = file_result['license_detections'][0]['license_expression_spdx']
 
@@ -220,13 +220,13 @@ class LicenseChecker:
         license_results = self.detect_licenses_batch(source_files)
 
         for idx, change in enumerate(source_files):
-            added_licenses = license_results.get((idx, 'added'), [])
-            deleted_licenses = license_results.get((idx, 'deleted'), [])
+            added_licenses = license_results.get((idx, 'added'), '')
+            deleted_licenses = license_results.get((idx, 'deleted'), '')
 
             issues = []
             if change['change_type'] == 'MODIFIED' or change['change_type'] == 'ADDED':
                 # Check if licenses changed
-                if added_licenses and deleted_licenses and set(added_licenses) != set(deleted_licenses):
+                if added_licenses and deleted_licenses and added_licenses != deleted_licenses:
                     # Only flag if the new license is NOT permissive
                     # This allows dual-license scenarios like "BSD-3-Clause OR GPL-2.0-only"
                     # where at least one option is permissive
