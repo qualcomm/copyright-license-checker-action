@@ -24,12 +24,13 @@ By default it scans git-tracked files only; --include-untracked widens the net
 to untracked-but-not-ignored files as well.
 
 Usage:
-    python full_scan.py <repo_name> <fail_on_findings> [--repo-path PATH]
+    python full_scan.py <repo_name> [fail_on_findings] [--repo-path PATH]
                                                         [--include-untracked]
 
     repo_name          -- github "owner/repo", used to resolve the repo license.
-    fail_on_findings   -- "true" to exit non-zero when blocking issues are found;
-                          anything else reports only and exits 0.
+    fail_on_findings   -- optional; defaults to "true". "true" exits non-zero
+                          when blocking issues are found; anything else reports
+                          only and exits 0.
     --repo-path        -- optional path to the repository working tree to scan.
                           Defaults to the current directory, which is what the
                           action uses (it runs with cwd = the consumer checkout).
@@ -40,7 +41,8 @@ Usage:
                           (not just git-tracked files). Off by default.
 
     repo_name and fail_on_findings stay positional so the existing action
-    invocation (full-scan/action.yml) keeps working unchanged.
+    invocation (full-scan/action.yml) keeps working unchanged; fail_on_findings
+    is now optional and defaults to "true" when omitted on the command line.
 """
 
 LOG_PREFIX = "< full-repo license/copyright check >"
@@ -130,7 +132,7 @@ def beautify_scan_output(flagged_files: dict, warning_files: dict,
 
 @click.command()
 @click.argument("repo_name")
-@click.argument("fail_on_findings")
+@click.argument("fail_on_findings", required=False, default="true")
 @click.option(
     "--repo-path",
     default=".",
@@ -162,9 +164,10 @@ def main(repo_name: str, fail_on_findings: str, repo_path: str,
     --include-untracked to also cover untracked-but-not-ignored files.
 
     REPO_NAME is the GitHub "owner/repo", used to resolve the repo license.
-    FAIL_ON_FINDINGS is "true" to exit non-zero when blocking issues are found;
-    anything else reports only and exits 0. Both stay positional so the existing
-    action invocation (full-scan/action.yml) keeps working unchanged.
+    FAIL_ON_FINDINGS is optional and defaults to "true": "true" exits non-zero
+    when blocking issues are found, anything else reports only and exits 0. Both
+    stay positional so the existing action invocation (full-scan/action.yml)
+    keeps working unchanged.
     """
     # Clamp chatty logging from license_identifier
     logging.basicConfig(level=logging.WARNING)
