@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import json
 import shutil
@@ -23,10 +24,14 @@ already exist in the repository -- so it asks different questions:
     * Missing license header  -- the file has no detectable license at all
     * Incompatible license    -- the file carries a concrete, disallowed license
     * Missing copyright        -- the file has no copyright statement at all
+    * Unexpected copyright     -- a copyright IS present but does not match the
+                                  expected Qualcomm/Linux Foundation holder
+                                  (non-blocking warning; see
+                                  EXPECTED_COPYRIGHT_PATTERN)
 
-Uncertain / unknown licenses (LicenseRef-scancode-unknown*) are reported as
-non-blocking warnings, matching the semantics of main.is_uncertain_license_issue
-on the PR path.
+Uncertain / unknown licenses (LicenseRef-scancode-unknown*) and copyright holders
+that do not match the expected pattern are reported as non-blocking warnings,
+matching the semantics of main.is_uncertain_license_issue on the PR path.
 
 License-optional build files (RepoScan.LICENSE_OPTIONAL_EXTENSIONS -- .mk/.bp/.bb)
 are the exception to the first and third checks: a missing license header or
@@ -110,6 +115,42 @@ def confident_license_expression(file_result: dict) -> str:
     for expr in dict.fromkeys(kept):
         parts.append(f'({expr})' if ' OR ' in expr else expr)
     return ' AND '.join(parts)
+
+
+# Expected copyright holder pattern. A file whose detected copyright does NOT
+# match this is reported as a NON-BLOCKING warning (a file with no copyright at
+# all is still a blocking error -- see run). This mirrors repolinter's Qualcomm
+# header rules (source-qualcomm-license-headers-exist /
+# qualcomm-source-license-headers-exist) so the two tools agree on holder policy.
+#
+# The pattern is matched against scancode's detected copyright statements (not raw
+# file text). Case-insensitive. Note the regex's alternation precedence -- it is
+# three top-level alternatives:
+#   (Copyright|©) ... Qualcomm Innovation Center, Inc          OR
+#   Qualcomm Technologies, Inc                                 OR
+#   Copyright (c)/© <year 2012-2022> The Linux Foundation
+# (kept byte-for-byte identical to the repolinter ruleset, including its quirks:
+# the Linux-Foundation branch only covers years 2012-2022, and the "Qualcomm
+# Technologies, Inc" branch matches anywhere in a statement.)
+EXPECTED_COPYRIGHT_PATTERN = re.compile(
+    r"(Copyright|©).*Qualcomm Innovation Center, Inc"
+    r"|Qualcomm Technologies, Inc"
+    r"|Copyright (\(c\)|©) (20(1[2-9]|2[0-2])(-|,|\s)*)+ The Linux Foundation",
+    re.IGNORECASE,
+)
+
+
+def copyright_matches_expected(copyrights: list) -> bool:
+    """
+    Report whether any detected copyright statement matches the expected holder.
+
+    Args:
+        copyrights (list): The file's detected copyright statements (truthy only).
+
+    Returns:
+        bool: True if at least one statement matches EXPECTED_COPYRIGHT_PATTERN.
+    """
+    return any(EXPECTED_COPYRIGHT_PATTERN.search(c) for c in copyrights if c)
 
 
 class FullScanner:
@@ -341,16 +382,18 @@ class FullScanner:
     def run(self) -> tuple:
         """
         Run the scan over all files surfaced by RepoScan. Source files are
-        checked for a missing/incompatible license and a missing copyright;
-        license-optional build files (.mk/.bp/.bb) skip the missing-license and
-        missing-copyright findings but are still flagged for an incompatible
-        license.
+        checked for a missing/incompatible license and a missing copyright
+        (blocking), plus a copyright whose holder does not match the expected
+        pattern (non-blocking warning). License-optional build files
+        (.mk/.bp/.bb) skip the missing-license and all copyright findings but are
+        still flagged for an incompatible license.
 
         Returns:
             tuple: (flagged_files, warning_files). Each is a dict mapping a file
                 path to {'license_issues': [...], 'copyright_issues': [...]}.
                 flagged_files holds blocking issues; warning_files holds
-                non-blocking ones.
+                non-blocking ones (uncertain license and/or unexpected copyright
+                holder).
         """
         files = self.repo_scan.get_files()
         scan_results = self.scan_files(files)
@@ -385,6 +428,7 @@ class FullScanner:
                     warning_license.append(f"Uncertain license, review manually: {license_expr}")
 
             error_copyright = []
+            warning_copyright = []
             if result.get('scan_errors'):
                 # scancode's copyright scanner errored for this file (see the
                 # warning emitted in scan_files). An errored scan is "unknown",
@@ -398,17 +442,26 @@ class FullScanner:
                 pass
             elif not result['copyrights']:
                 # Missing copyright -- no copyright statement anywhere in the file.
+                # This stays a BLOCKING error.
                 error_copyright.append("No copyright statement found")
+            elif not copyright_matches_expected(result['copyrights']):
+                # Copyright IS present but does not match the expected holder
+                # pattern (see EXPECTED_COPYRIGHT_PATTERN). Non-blocking WARNING --
+                # a missing copyright blocks, a wrong holder only warns.
+                warning_copyright.append(
+                    "Copyright holder does not match the expected Qualcomm/Linux "
+                    "Foundation pattern, review manually"
+                )
 
             if error_license or error_copyright:
                 flagged_files[path] = {
                     'license_issues': error_license,
                     'copyright_issues': error_copyright,
                 }
-            if warning_license:
+            if warning_license or warning_copyright:
                 warning_files[path] = {
                     'license_issues': warning_license,
-                    'copyright_issues': [],
+                    'copyright_issues': warning_copyright,
                 }
 
         return flagged_files, warning_files

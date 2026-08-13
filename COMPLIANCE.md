@@ -236,6 +236,35 @@ When scancode identifies a file as having ONLY a proprietary license (not mixed 
 
 ---
 
+### Unexpected Copyright Holder (Full-Repository Scan Only)
+
+**What triggers this:**
+- A source file HAS a copyright statement, but its holder does not match the expected Qualcomm / Linux Foundation pattern.
+
+This applies only to the **full-repository scan** (the whole-tree audit), not the pull-request patch check. A file with NO copyright at all is still a **blocking** error ("No copyright statement found"); only a present-but-unexpected holder warns.
+
+**Expected holders (any one satisfies the check, matched case-insensitively against scancode's detected copyright statements):**
+- `Copyright ... Qualcomm Innovation Center, Inc`
+- `Qualcomm Technologies, Inc`
+- `Copyright (c) <year 2012-2022> The Linux Foundation`
+
+**Example - Warning:**
+```
+⚠️ WARNINGS (Non-blocking):
+📄 File: src/third_party/vendor.c
+⚠️ COPYRIGHT WARNINGS:
+  - Copyright holder does not match the expected Qualcomm/Linux Foundation pattern, review manually
+```
+
+**What to do:**
+- Confirm the copyright is correct for the file (e.g. it is legitimately third-party / vendored).
+- For vendored dependencies, consider adding the path to `.licenseignore`.
+- For first-party code, use a standard Qualcomm copyright header.
+
+**Compliance Impact:** LOW - Attribution review; does not block development.
+
+---
+
 ## Full-Repository Scan: License-Optional Build Files
 
 This applies only to the **full-repository scan** (the whole-tree audit), not the

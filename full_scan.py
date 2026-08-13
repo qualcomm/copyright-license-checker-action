@@ -109,6 +109,11 @@ def beautify_scan_output(flagged_files: dict, warning_files: dict,
                 output.append(f"{log_prefix} │ ├─ ⚠️  LICENSE WARNINGS:")
                 for issue in issues['license_issues']:
                     output.append(f"{log_prefix} │ │  • {issue}")
+            if issues['copyright_issues']:
+                output.append(f"{log_prefix} │ │")
+                output.append(f"{log_prefix} │ ├─ ⚠️  COPYRIGHT WARNINGS:")
+                for issue in issues['copyright_issues']:
+                    output.append(f"{log_prefix} │ │  • {issue}")
             output.append(f"{log_prefix} │ └─────────────────────────────────────────")
 
     output.append(f"{log_prefix} └───────────────────────────────────────────┘")
