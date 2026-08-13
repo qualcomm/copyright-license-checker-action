@@ -24,6 +24,9 @@ class LicenseFileTestCase(unittest.TestCase):
 
     def setUp(self):
         """Change into a temporary directory so LICENSE lookups are isolated."""
+        # pylint: disable=consider-using-with
+        # A `with` block can't span setUp/tearDown; addCleanup is the correct
+        # unittest idiom for scoping a TemporaryDirectory to the test lifetime.
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         original_cwd = os.getcwd()
@@ -45,7 +48,9 @@ class TestDetectLicenseFromFile(LicenseFileTestCase):
         def fake_run(cmd, **_kwargs):
             output_file = cmd[cmd.index("--json-pp") + 1]
             detections = [] if expression is None else [{"license_expression_spdx": expression}]
-            report = {"files": [{"path": "LICENSE", "type": "file", "license_detections": detections}]}
+            report = {
+                "files": [{"path": "LICENSE", "type": "file", "license_detections": detections}]
+            }
             Path(output_file).write_text(__import__("json").dumps(report), encoding="utf-8")
             return MagicMock(returncode=0)
 
@@ -118,20 +123,32 @@ class TestIsUncertainLicenseIssue(unittest.TestCase):
 
     def test_unknown_license_is_uncertain(self):
         """A lone scancode 'unknown' reference is a warning."""
-        self.assertTrue(main.is_uncertain_license_issue("Incompatible license added: LicenseRef-scancode-unknown-license-reference"))
+        self.assertTrue(
+            main.is_uncertain_license_issue(
+                "Incompatible license added: LicenseRef-scancode-unknown-license-reference"
+            )
+        )
 
     def test_gpl_is_not_uncertain(self):
         """A known copyleft license is an error, not a warning."""
-        self.assertFalse(main.is_uncertain_license_issue("Incompatible license added: GPL-2.0-only"))
+        self.assertFalse(
+            main.is_uncertain_license_issue("Incompatible license added: GPL-2.0-only")
+        )
 
     def test_mixed_unknown_and_gpl_is_not_uncertain(self):
         """Any recognized incompatible license in the expression forces an error."""
-        issue = "Incompatible license added: GPL-2.0-only AND LicenseRef-scancode-unknown-license-reference"
+        issue = (
+            "Incompatible license added: GPL-2.0-only AND "
+            "LicenseRef-scancode-unknown-license-reference"
+        )
         self.assertFalse(main.is_uncertain_license_issue(issue))
 
     def test_all_uncertain_components_is_uncertain(self):
         """An expression made only of uncertain references is a warning."""
-        issue = "Incompatible license added: LicenseRef-scancode-unknown-license-reference AND LicenseRef-scancode-warranty-disclaimer"
+        issue = (
+            "Incompatible license added: LicenseRef-scancode-unknown-license-reference AND "
+            "LicenseRef-scancode-warranty-disclaimer"
+        )
         self.assertTrue(main.is_uncertain_license_issue(issue))
 
     def test_solitary_proprietary_license_is_not_uncertain(self):
@@ -139,26 +156,47 @@ class TestIsUncertainLicenseIssue(unittest.TestCase):
         A lone proprietary-license detection is a blocking error today. Proprietary
         mode will make this mode-aware; this test pins the current behavior.
         """
-        self.assertFalse(main.is_uncertain_license_issue("Incompatible license added: LicenseRef-scancode-proprietary-license"))
+        self.assertFalse(
+            main.is_uncertain_license_issue(
+                "Incompatible license added: LicenseRef-scancode-proprietary-license"
+            )
+        )
 
     def test_proprietary_mixed_with_unknown_is_uncertain(self):
         """Mixed with other uncertain references, proprietary becomes a warning."""
-        issue = "Incompatible license added: LicenseRef-scancode-proprietary-license AND LicenseRef-scancode-unknown-license-reference"
+        issue = (
+            "Incompatible license added: LicenseRef-scancode-proprietary-license AND "
+            "LicenseRef-scancode-unknown-license-reference"
+        )
         self.assertTrue(main.is_uncertain_license_issue(issue))
 
     def test_license_change_issue_examines_added_license(self):
         """For a change issue, only the added license decides the outcome."""
-        self.assertTrue(main.is_uncertain_license_issue("License deleted: MIT and license added: LicenseRef-scancode-unknown"))
-        self.assertFalse(main.is_uncertain_license_issue("License deleted: MIT and license added: GPL-2.0-only"))
+        self.assertTrue(
+            main.is_uncertain_license_issue(
+                "License deleted: MIT and license added: LicenseRef-scancode-unknown"
+            )
+        )
+        self.assertFalse(
+            main.is_uncertain_license_issue("License deleted: MIT and license added: GPL-2.0-only")
+        )
 
     def test_permissive_licenseref_is_not_uncertain(self):
         """A LicenseRef that appears in the permissive list is not uncertain."""
-        self.assertFalse(main.is_uncertain_license_issue("Incompatible license added: LicenseRef-scancode-unicode"))
+        self.assertFalse(
+            main.is_uncertain_license_issue(
+                "Incompatible license added: LicenseRef-scancode-unicode"
+            )
+        )
 
     def test_other_issue_types_match_on_substring(self):
         """Issues that are neither add nor change fall back to a substring check."""
-        self.assertTrue(main.is_uncertain_license_issue("License deleted: LicenseRef-scancode-unknown"))
-        self.assertFalse(main.is_uncertain_license_issue("No license added for source file: src/foo.c"))
+        self.assertTrue(
+            main.is_uncertain_license_issue("License deleted: LicenseRef-scancode-unknown")
+        )
+        self.assertFalse(
+            main.is_uncertain_license_issue("No license added for source file: src/foo.c")
+        )
 
 
 class TestBeautifyOutput(unittest.TestCase):
@@ -195,8 +233,14 @@ class TestBeautifyOutput(unittest.TestCase):
     def test_blocking_issue_exits_with_file_count(self):
         """The exit code is the number of files with blocking issues."""
         flagged = {
-            "src/a.c": {"license_issues": ["Incompatible license added: GPL-2.0-only"], "copyright_issues": []},
-            "src/b.c": {"license_issues": ["Incompatible license added: GPL-3.0-only"], "copyright_issues": []},
+            "src/a.c": {
+                "license_issues": ["Incompatible license added: GPL-2.0-only"],
+                "copyright_issues": [],
+            },
+            "src/b.c": {
+                "license_issues": ["Incompatible license added: GPL-3.0-only"],
+                "copyright_issues": [],
+            },
         }
         output, code = self.render(flagged, {})
         self.assertEqual(code, 2)
@@ -205,7 +249,12 @@ class TestBeautifyOutput(unittest.TestCase):
 
     def test_warnings_only_exits_zero(self):
         """Warnings are reported but do not fail the build."""
-        warnings = {"src/c.c": {"license_issues": ["Incompatible license added: LicenseRef-scancode-unknown"], "copyright_issues": []}}
+        warnings = {
+            "src/c.c": {
+                "license_issues": ["Incompatible license added: LicenseRef-scancode-unknown"],
+                "copyright_issues": [],
+            }
+        }
         output, code = self.render({}, warnings)
         self.assertEqual(code, 0)
         self.assertIn("W A R N I N G S", output)
@@ -213,7 +262,12 @@ class TestBeautifyOutput(unittest.TestCase):
 
     def test_copyright_issues_are_rendered(self):
         """Copyright issues appear under their own heading."""
-        flagged = {"src/d.c": {"license_issues": [], "copyright_issues": ["Copyright deletions detected: ['Copyright (c) 2019 X']"]}}
+        flagged = {
+            "src/d.c": {
+                "license_issues": [],
+                "copyright_issues": ["Copyright deletions detected: ['Copyright (c) 2019 X']"],
+            }
+        }
         output, code = self.render(flagged, {})
         self.assertEqual(code, 1)
         self.assertIn("COPYRIGHT ISSUES", output)
@@ -275,7 +329,11 @@ class TestMainEntryPoint(LicenseFileTestCase):
         """An uncertain license issue is routed to warnings and exits 0."""
         output, code = self.run_main(
             ["main.py", "pr.patch", "org/repo"],
-            {"src/a.c": ["Incompatible license added: LicenseRef-scancode-unknown-license-reference"]},
+            {
+                "src/a.c": [
+                    "Incompatible license added: LicenseRef-scancode-unknown-license-reference"
+                ]
+            },
             {},
         )
         self.assertEqual(code, 0)
@@ -303,9 +361,11 @@ class TestMainEntryPoint(LicenseFileTestCase):
 
     def test_permissive_repo_gets_permissive_allowed_list(self):
         """A permissive repo license selects the permissive allowed list."""
-        with mock_patch("main.get_license", return_value="MIT"), mock_patch("main.Patch"), mock_patch(
-            "main.CopyrightChecker"
-        ) as copyright_cls, mock_patch("main.LicenseChecker") as license_cls:
+        with mock_patch("main.get_license", return_value="MIT"), mock_patch(
+            "main.Patch"
+        ), mock_patch("main.CopyrightChecker") as copyright_cls, mock_patch(
+            "main.LicenseChecker"
+        ) as license_cls:
             license_cls.return_value.run.return_value = {}
             copyright_cls.return_value.run.return_value = {}
             with mock_patch.object(sys, "argv", ["main.py", "pr.patch", "org/repo"]):
@@ -316,9 +376,11 @@ class TestMainEntryPoint(LicenseFileTestCase):
 
     def test_copyleft_repo_gets_copyleft_allowed_list(self):
         """A copyleft repo license selects the copyleft allowed list."""
-        with mock_patch("main.get_license", return_value="GPL-2.0-only"), mock_patch("main.Patch"), mock_patch(
-            "main.CopyrightChecker"
-        ) as copyright_cls, mock_patch("main.LicenseChecker") as license_cls:
+        with mock_patch("main.get_license", return_value="GPL-2.0-only"), mock_patch(
+            "main.Patch"
+        ), mock_patch("main.CopyrightChecker") as copyright_cls, mock_patch(
+            "main.LicenseChecker"
+        ) as license_cls:
             license_cls.return_value.run.return_value = {}
             copyright_cls.return_value.run.return_value = {}
             with mock_patch.object(sys, "argv", ["main.py", "pr.patch", "org/repo"]):
@@ -329,9 +391,11 @@ class TestMainEntryPoint(LicenseFileTestCase):
 
     def test_compound_expression_is_parsed_into_components(self):
         """An unrecognized compound expression is split into its components."""
-        with mock_patch("main.get_license", return_value="GPL-2.0-only AND MIT"), mock_patch("main.Patch"), mock_patch(
-            "main.CopyrightChecker"
-        ) as copyright_cls, mock_patch("main.LicenseChecker") as license_cls:
+        with mock_patch("main.get_license", return_value="GPL-2.0-only AND MIT"), mock_patch(
+            "main.Patch"
+        ), mock_patch("main.CopyrightChecker") as copyright_cls, mock_patch(
+            "main.LicenseChecker"
+        ) as license_cls:
             license_cls.return_value.run.return_value = {}
             copyright_cls.return_value.run.return_value = {}
             with mock_patch.object(sys, "argv", ["main.py", "pr.patch", "org/repo"]):

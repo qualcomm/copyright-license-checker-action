@@ -27,7 +27,12 @@ def make_patch(changes: list) -> MagicMock:
     return patch
 
 
-def make_change(content: str, change_type: str = "MODIFIED", path_name: str = "src/foo.c", file_type: str = "source") -> dict:
+def make_change(
+    content: str,
+    change_type: str = "MODIFIED",
+    path_name: str = "src/foo.c",
+    file_type: str = "source",
+) -> dict:
     """
     Build a single change dictionary in the shape Patch produces.
 

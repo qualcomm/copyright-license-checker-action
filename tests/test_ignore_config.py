@@ -16,6 +16,9 @@ class IgnoreConfigTestCase(unittest.TestCase):
 
     def setUp(self):
         """Create a temporary directory for ignore files."""
+        # pylint: disable=consider-using-with
+        # A `with` block can't span setUp/tearDown; addCleanup is the correct
+        # unittest idiom for scoping a TemporaryDirectory to the test lifetime.
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
 
@@ -45,7 +48,9 @@ class TestIgnoreConfigLoading(IgnoreConfigTestCase):
 
     def test_comments_and_blanks_are_skipped(self):
         """Comment and blank lines are not treated as patterns."""
-        config = IgnoreConfig(self.write_ignore("# a comment\n\nvendor/**\n\n  # indented comment\n"))
+        config = IgnoreConfig(
+            self.write_ignore("# a comment\n\nvendor/**\n\n  # indented comment\n")
+        )
         self.assertEqual(config.patterns, ["vendor/**"])
 
     def test_patterns_are_stripped(self):

@@ -44,7 +44,12 @@ def make_patch_obj(changes: list) -> MagicMock:
     return stub
 
 
-def make_change(content: str, change_type: str = "MODIFIED", path_name: str = "src/foo.c", file_type: str = "source") -> dict:
+def make_change(
+    content: str,
+    change_type: str = "MODIFIED",
+    path_name: str = "src/foo.c",
+    file_type: str = "source",
+) -> dict:
     """
     Build a single change dictionary in the shape Patch produces.
 
@@ -129,7 +134,9 @@ class TestIsLicensePermissive(unittest.TestCase):
         A leading '(X OR Y) AND ...' dual-license expression is decided solely by
         the leading OR group; trailing AND terms are treated as comment noise.
         """
-        self.assertTrue(self.checker.is_license_permissive("(MIT OR GPL-2.0-only) AND GPL-3.0-only"))
+        self.assertTrue(
+            self.checker.is_license_permissive("(MIT OR GPL-2.0-only) AND GPL-3.0-only")
+        )
 
     def test_unknown_license_is_not_permissive(self):
         """An identifier absent from the allowed list is not permissive."""
@@ -167,7 +174,22 @@ class TestIsSourceFile(unittest.TestCase):
 
     def test_known_source_extensions(self):
         """Recognized code extensions are source files."""
-        for name in ("a.c", "a.cpp", "a.h", "a.hpp", "a.java", "a.py", "a.js", "a.ts", "a.rb", "a.go", "a.swift", "a.kt", "a.kts", "a.sh"):
+        for name in (
+            "a.c",
+            "a.cpp",
+            "a.h",
+            "a.hpp",
+            "a.java",
+            "a.py",
+            "a.js",
+            "a.ts",
+            "a.rb",
+            "a.go",
+            "a.swift",
+            "a.kt",
+            "a.kts",
+            "a.sh",
+        ):
             self.assertTrue(self.checker.is_source_file(name), name)
 
     def test_non_source_extensions(self):
@@ -183,7 +205,9 @@ class TestDetectLicensesBatch(ScancodeMockMixin, unittest.TestCase):
         """Added and deleted line groups get independent results."""
         self.install_scancode_mock({"0_added.txt": "MIT", "0_deleted.txt": "BSD-3-Clause"})
         checker = LicenseChecker(make_patch_obj([]), "org/repo", PERMISSIVE)
-        results = checker.detect_licenses_batch([make_change("+MIT license text\n-BSD license text\n")])
+        results = checker.detect_licenses_batch(
+            [make_change("+MIT license text\n-BSD license text\n")]
+        )
         self.assertEqual(results[(0, "added")], "MIT")
         self.assertEqual(results[(0, "deleted")], "BSD-3-Clause")
 
@@ -241,7 +265,9 @@ class TestRunLicenseRules(ScancodeMockMixin, unittest.TestCase):
             [make_change("+GPL text\n-MIT text\n")],
             {"0_added.txt": "GPL-2.0-only", "0_deleted.txt": "MIT"},
         )
-        self.assertIn("License deleted: MIT and license added: GPL-2.0-only", flagged["src/foo.c"][0])
+        self.assertIn(
+            "License deleted: MIT and license added: GPL-2.0-only", flagged["src/foo.c"][0]
+        )
 
     def test_license_changed_to_permissive_is_allowed(self):
         """Swapping one permissive license for another is allowed."""

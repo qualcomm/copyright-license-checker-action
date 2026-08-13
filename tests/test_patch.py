@@ -35,6 +35,9 @@ class PatchTestCase(unittest.TestCase):
 
     def setUp(self):
         """Run each test in a scratch directory so .licenseignore never leaks in."""
+        # pylint: disable=consider-using-with
+        # A `with` block can't span setUp/tearDown; addCleanup is the correct
+        # unittest idiom for scoping a TemporaryDirectory to the test lifetime.
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.original_cwd = os.getcwd()
