@@ -303,9 +303,12 @@ class TestMainEntryPoint(LicenseFileTestCase):
         copyright_checker = MagicMock()
         copyright_checker.run.return_value = copyright_issues
 
-        with mock_patch.object(sys, "argv", argv), mock_patch("main.Patch"), mock_patch(
-            "main.LicenseChecker", return_value=license_checker
-        ), mock_patch("main.CopyrightChecker", return_value=copyright_checker):
+        with (
+            mock_patch.object(sys, "argv", argv),
+            mock_patch("main.Patch"),
+            mock_patch("main.LicenseChecker", return_value=license_checker),
+            mock_patch("main.CopyrightChecker", return_value=copyright_checker),
+        ):
             with contextlib.redirect_stdout(buffer):
                 with self.assertRaises(SystemExit) as caught:
                     main.main()
@@ -361,11 +364,12 @@ class TestMainEntryPoint(LicenseFileTestCase):
 
     def test_permissive_repo_gets_permissive_allowed_list(self):
         """A permissive repo license selects the permissive allowed list."""
-        with mock_patch("main.get_license", return_value="MIT"), mock_patch(
-            "main.Patch"
-        ), mock_patch("main.CopyrightChecker") as copyright_cls, mock_patch(
-            "main.LicenseChecker"
-        ) as license_cls:
+        with (
+            mock_patch("main.get_license", return_value="MIT"),
+            mock_patch("main.Patch"),
+            mock_patch("main.CopyrightChecker") as copyright_cls,
+            mock_patch("main.LicenseChecker") as license_cls,
+        ):
             license_cls.return_value.run.return_value = {}
             copyright_cls.return_value.run.return_value = {}
             with mock_patch.object(sys, "argv", ["main.py", "pr.patch", "org/repo"]):
@@ -376,11 +380,12 @@ class TestMainEntryPoint(LicenseFileTestCase):
 
     def test_copyleft_repo_gets_copyleft_allowed_list(self):
         """A copyleft repo license selects the copyleft allowed list."""
-        with mock_patch("main.get_license", return_value="GPL-2.0-only"), mock_patch(
-            "main.Patch"
-        ), mock_patch("main.CopyrightChecker") as copyright_cls, mock_patch(
-            "main.LicenseChecker"
-        ) as license_cls:
+        with (
+            mock_patch("main.get_license", return_value="GPL-2.0-only"),
+            mock_patch("main.Patch"),
+            mock_patch("main.CopyrightChecker") as copyright_cls,
+            mock_patch("main.LicenseChecker") as license_cls,
+        ):
             license_cls.return_value.run.return_value = {}
             copyright_cls.return_value.run.return_value = {}
             with mock_patch.object(sys, "argv", ["main.py", "pr.patch", "org/repo"]):
@@ -391,11 +396,12 @@ class TestMainEntryPoint(LicenseFileTestCase):
 
     def test_compound_expression_is_parsed_into_components(self):
         """An unrecognized compound expression is split into its components."""
-        with mock_patch("main.get_license", return_value="GPL-2.0-only AND MIT"), mock_patch(
-            "main.Patch"
-        ), mock_patch("main.CopyrightChecker") as copyright_cls, mock_patch(
-            "main.LicenseChecker"
-        ) as license_cls:
+        with (
+            mock_patch("main.get_license", return_value="GPL-2.0-only AND MIT"),
+            mock_patch("main.Patch"),
+            mock_patch("main.CopyrightChecker") as copyright_cls,
+            mock_patch("main.LicenseChecker") as license_cls,
+        ):
             license_cls.return_value.run.return_value = {}
             copyright_cls.return_value.run.return_value = {}
             with mock_patch.object(sys, "argv", ["main.py", "pr.patch", "org/repo"]):
