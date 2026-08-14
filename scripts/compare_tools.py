@@ -11,10 +11,16 @@ import contextlib
 import subprocess
 from datetime import datetime
 from dataclasses import dataclass, field
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 import click
 
+# This file lives in <action-repo>/scripts/, one level below the repo root where
+# main.py and the scanner package live. Put the repo root on sys.path so
+# `python scripts/compare_tools.py ...` resolves those imports.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# pylint: disable=wrong-import-position
 from main import get_license, PERMISSIVE_LICENSES, COPYLEFT_LICENSES
 from scanner.full_repo import (
     RepoScan,
@@ -42,9 +48,10 @@ is the centerpiece: it is the evidence for eventually retiring repolinter's
 license/copyright rules in favour of full_scan.
 
 Usage:
-    python compare_tools.py <repo_name> [--repo-path PATH] [--include-untracked]
-                            [--ruleset-url URL] [--repolinter-json FILE]
-                            [--output FILE] [--open] [--port N] [--verbose]
+    python scripts/compare_tools.py <repo_name> [--repo-path PATH] [--include-untracked]
+                                    [--include-licenseignore] [--ruleset-url URL]
+                                    [--repolinter-json FILE] [--output FILE]
+                                    [--open] [--port N] [--verbose]
 
     The report is ALWAYS served over HTTP on 0.0.0.0:8000 (change the port with
     --port) until Ctrl-C, so it can be viewed from other machines.
@@ -57,16 +64,19 @@ Usage:
     created on demand), so older reports are retained and easy to track. Override
     with --output.
 
+For the org-wide, multi-repo version that enumerates GitHub orgs and shallow-clones
+each repo automatically, see scripts/compare_tools_remote.py.
+
 Runtime dependencies: `docker` and `scancode` must be on PATH (unless
 --repolinter-json is used, which skips docker).
 """
 
 LOG_PREFIX = "< repolinter vs full-scan comparison >"
 
-# This script lives at the action repo root, so its own directory IS the repo.
-# Reports default to a `reports/` dir here (created on demand), independent of the
-# scanned repo (--repo-path) or the current working directory.
-REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+# This script lives in <action-repo>/scripts/, so the action repo root is its
+# parent's parent. Reports default to a `reports/` dir at that root (created on
+# demand), independent of the scanned repo (--repo-path) or the cwd.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPORTS_DIR = os.path.join(REPO_ROOT, "reports")
 
 REPOLINTER_IMAGE = "ghcr.io/todogroup/repolinter:v0.11.2"
@@ -153,6 +163,7 @@ class ScannerView:
     license: str
     per_file: dict = field(default_factory=dict)     # path -> [ScannerFinding]
     scanned_paths: set = field(default_factory=set)   # everything RepoScan surfaced
+    ignored_paths: set = field(default_factory=set)   # files .licenseignore excluded
     flagged_count: int = 0
     warning_count: int = 0
 
@@ -211,7 +222,7 @@ def _ext_of(path: str) -> str:
 
 
 def run_full_scan(repo_name: str, repo_path: str, include_untracked: bool,
-                  verbose: bool = False) -> tuple:
+                  verbose: bool = False, include_licenseignore: bool = False) -> tuple:
     """
     Run our full-repo scanner in-process and return structured results.
 
@@ -226,9 +237,12 @@ def run_full_scan(repo_name: str, repo_path: str, include_untracked: bool,
         repo_path (str): Absolute path to the repository working tree.
         include_untracked (bool): Also scan untracked-but-not-ignored files.
         verbose (bool): Echo captured get_license chatter to stderr.
+        include_licenseignore (bool): Also scan files matched by .licenseignore.
 
     Returns:
-        tuple: (license, flagged_files, warning_files, scanned_paths).
+        tuple: (license, flagged_files, warning_files, scanned_paths,
+                ignored_paths). ignored_paths are source files .licenseignore
+                excluded (recorded even when include_licenseignore is True).
     """
     prev_cwd = os.getcwd()
     captured = io.StringIO()
@@ -243,8 +257,10 @@ def run_full_scan(repo_name: str, repo_path: str, include_untracked: bool,
         else:
             allowed_licenses = [license_id]
 
-        repo_scan = RepoScan(include_untracked=include_untracked)
+        repo_scan = RepoScan(include_untracked=include_untracked,
+                             include_licenseignore=include_licenseignore)
         scanned_paths = set(repo_scan.get_files())
+        ignored_paths = set(repo_scan.get_ignored_files())
         flagged_files, warning_files = FullScanner(repo_scan, allowed_licenses).run()
     finally:
         os.chdir(prev_cwd)
@@ -252,7 +268,7 @@ def run_full_scan(repo_name: str, repo_path: str, include_untracked: bool,
     if verbose and captured.getvalue().strip():
         print(captured.getvalue().strip(), file=sys.stderr)
 
-    return license_id, flagged_files, warning_files, scanned_paths
+    return license_id, flagged_files, warning_files, scanned_paths, ignored_paths
 
 
 def build_repolinter_cmd(repo_path: str, ruleset_url: str) -> list:
@@ -343,7 +359,7 @@ def _parse_scanner_message(message: str):
 
 
 def normalize_scanner(license_id: str, flagged_files: dict, warning_files: dict,
-                      scanned_paths: set) -> ScannerView:
+                      scanned_paths: set, ignored_paths: set = None) -> ScannerView:
     """
     Fold full_scan's flagged + warning dicts into a per-file ScannerFinding view.
 
@@ -352,6 +368,7 @@ def normalize_scanner(license_id: str, flagged_files: dict, warning_files: dict,
         flagged_files (dict): Blocking findings from FullScanner.run.
         warning_files (dict): Non-blocking findings from FullScanner.run.
         scanned_paths (set): All paths RepoScan surfaced (the scanner's scope).
+        ignored_paths (set): Paths .licenseignore excluded (for divergence tags).
 
     Returns:
         ScannerView: The normalized view.
@@ -359,6 +376,7 @@ def normalize_scanner(license_id: str, flagged_files: dict, warning_files: dict,
     view = ScannerView(
         license=license_id,
         scanned_paths={normalize_path(p) for p in scanned_paths},
+        ignored_paths={normalize_path(p) for p in (ignored_paths or set())},
         flagged_count=len(flagged_files),
         warning_count=len(warning_files),
     )
@@ -436,9 +454,10 @@ def normalize_repolinter(lint_result: dict) -> RepolinterView:
 # --------------------------------------------------------------------------- #
 
 def _compute_tags(record: ComparisonRecord, scanner_scope: set,
-                  include_untracked: bool) -> list:
+                  include_untracked: bool, ignored_scope: set = None) -> list:
     """Compute human-readable divergence tags for one comparison record."""
     tags = []
+    ignored_scope = ignored_scope or set()
     scanner_kinds = {f.kind for f in record.scanner_findings}
     failed_rl = [f for f in record.repolinter_findings if not f.passed]
     failed_rules = {f.rule_name for f in failed_rl}
@@ -470,9 +489,15 @@ def _compute_tags(record: ComparisonRecord, scanner_scope: set,
     ):
         tags.append(f"scope: {record.ext} only scanned by repolinter")
 
-    if (record.category == "ONLY_REPOLINTER" and not include_untracked
-            and record.path not in scanner_scope):
-        tags.append("scope: untracked (use --include-untracked)")
+    # ONLY_REPOLINTER files full_scan never scanned: distinguish *why* full_scan
+    # did not see them -- excluded by the repo's .licenseignore (full_scan honors
+    # it, repolinter does not) vs genuinely untracked. Both are "not in scope",
+    # so check the .licenseignore set first.
+    if record.category == "ONLY_REPOLINTER" and record.path not in scanner_scope:
+        if record.path in ignored_scope:
+            tags.append("excluded by .licenseignore (use --include-licenseignore)")
+        elif not include_untracked:
+            tags.append("scope: untracked (use --include-untracked)")
 
     if failed_rl and all(f.level == "warning" for f in failed_rl):
         tags.append("level: repolinter warning-only")
@@ -537,7 +562,8 @@ def build_comparison(scanner_view: ScannerView, repolinter_view: RepolinterView,
             scanner_findings=scanner_findings,
             repolinter_findings=repolinter_findings,
         )
-        record.tags = _compute_tags(record, scanner_view.scanned_paths, include_untracked)
+        record.tags = _compute_tags(record, scanner_view.scanned_paths,
+                                     include_untracked, scanner_view.ignored_paths)
         records.append(record)
 
     order = {"BOTH": 0, "ONLY_FULL_SCAN": 1, "ONLY_REPOLINTER": 2}
@@ -735,7 +761,12 @@ def _serve_report(output_path: str, port: int, open_browser: bool) -> None:
     filename = os.path.basename(output_path)
     handler = functools.partial(SimpleHTTPRequestHandler, directory=directory)
     try:
-        httpd = HTTPServer(("0.0.0.0", port), handler)
+        # ThreadingHTTPServer (one thread per connection): a browser opens several
+        # parallel/keep-alive sockets, and a single-threaded HTTPServer gets wedged
+        # on the first, leaving new connections unanswered (blank page). daemon
+        # threads let Ctrl-C exit without waiting on lingering client connections.
+        httpd = ThreadingHTTPServer(("0.0.0.0", port), handler)
+        httpd.daemon_threads = True
     except OSError as exc:
         # Port in use / not permitted. The report is already written, so do NOT
         # crash the whole run after the (slow) scan -- report clearly and return.
@@ -788,6 +819,15 @@ def _serve_report(output_path: str, port: int, open_browser: bool) -> None:
          "always scans the working tree, so this is usually needed for parity.",
 )
 @click.option(
+    "--include-licenseignore",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Also scan files the repo's .licenseignore excludes. Repolinter does "
+         "not honor .licenseignore, so this is needed for parity on repos that "
+         "use it (otherwise those files show as repolinter-only).",
+)
+@click.option(
     "--ruleset-url",
     default=DEFAULT_RULESET_URL,
     show_default=True,
@@ -814,9 +854,9 @@ def _serve_report(output_path: str, port: int, open_browser: bool) -> None:
                    "0.0.0.0 until Ctrl-C; use this only to change the port.")
 @click.option("--verbose", is_flag=True, default=False,
               help="Echo suppressed get_license/scan chatter to stderr.")
-def main(repo_name: str, repo_path: str, include_untracked: bool, ruleset_url: str,
-         repolinter_json: str, output: str, open_browser: bool,
-         port: int, verbose: bool) -> None:
+def main(repo_name: str, repo_path: str, include_untracked: bool,
+         include_licenseignore: bool, ruleset_url: str, repolinter_json: str,
+         output: str, open_browser: bool, port: int, verbose: bool) -> None:
     """
     Compare repolinter and full_scan over a repository and write an HTML report.
 
@@ -831,16 +871,16 @@ def main(repo_name: str, repo_path: str, include_untracked: bool, ruleset_url: s
     print(f"{LOG_PREFIX} Running full-repo scancode scan (this can take a minute)...",
           file=sys.stderr)
     try:
-        license_id, flagged_files, warning_files, scanned_paths = run_full_scan(
-            repo_name, repo_path, include_untracked, verbose
-        )
+        license_id, flagged_files, warning_files, scanned_paths, ignored_paths = \
+            run_full_scan(repo_name, repo_path, include_untracked, verbose,
+                          include_licenseignore)
     except subprocess.CalledProcessError as exc:
         print(f"{LOG_PREFIX} ERROR: '{repo_path}' is not a git repository "
               f"(git ls-files failed): {exc}", file=sys.stderr)
         sys.exit(2)
 
     scanner_view = normalize_scanner(
-        license_id, flagged_files, warning_files, scanned_paths
+        license_id, flagged_files, warning_files, scanned_paths, ignored_paths
     )
 
     # 2. repolinter.
@@ -869,6 +909,7 @@ def main(repo_name: str, repo_path: str, include_untracked: bool, ruleset_url: s
         "ruleset_url": ruleset_url,
         "repolinter_image": REPOLINTER_IMAGE,
         "include_untracked": include_untracked,
+        "include_licenseignore": include_licenseignore,
         "generated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
         "repolinter_source": "cached-json" if repolinter_json else "docker",
         "repolinter_ok": repolinter_failed_reason is None,
@@ -1060,6 +1101,10 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
         <code>.cc .rs .bbclass .S</code>.</li>
       <li><b>Tracked vs working tree.</b> repolinter scans the whole working tree;
         full_scan scans git-tracked files unless <code>--include-untracked</code> is set.</li>
+      <li><b>.licenseignore.</b> full_scan honors the repo's <code>.licenseignore</code>;
+        repolinter does not. Excluded files appear as repolinter-only, tagged
+        <code>excluded by .licenseignore</code>; pass <code>--include-licenseignore</code>
+        to scan them too.</li>
       <li><b>Codes.</b> <code>SLH</code>=source-license-headers-exist (error),
         <code>QSLH</code>=qualcomm-source-license-headers-exist (error),
         <code>SQLH</code>=source-qualcomm-license-headers-exist (warning).
