@@ -43,7 +43,9 @@ Usage:
 
     With no --orgs/--repos it enumerates the default Qualcomm public orgs. Use --repos
     owner/repo (repeatable) to scan an explicit set and skip API enumeration. The
-    aggregate report is ALWAYS served on 0.0.0.0:<port> (default 8000) until Ctrl-C.
+    aggregate report is served on 0.0.0.0:<port> (default 8000); the report server
+    serves the whole reports dir, so the first run holds the server (Ctrl-C to stop)
+    and later runs whose port is already serving that dir just print the URL and exit.
 
     Auth: GITHUB_TOKEN (if set) raises the API rate limit and is used for cloning.
     Corporate SSL: REQUESTS_CA_BUNDLE (if set) is passed to git as GIT_SSL_CAINFO and
@@ -430,7 +432,9 @@ def _write_text(text: str, path: str) -> None:
 @click.option("--open", "open_browser", is_flag=True, default=False,
               help="Open the served report in a browser when the server starts.")
 @click.option("--port", default=8000, show_default=True, type=int,
-              help="Port to serve the report on (always served on 0.0.0.0 until Ctrl-C).")
+              help="Port to serve the report on (0.0.0.0). The first run holds the "
+                   "server until Ctrl-C; later runs reuse a server already serving "
+                   "the reports dir on this port (print the URL and exit).")
 @click.option("--verbose", is_flag=True, default=False,
               help="Echo suppressed get_license/scan chatter to stderr.")
 def main(orgs, repos_filter, max_repos, include_archived, include_licenseignore,

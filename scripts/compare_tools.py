@@ -6,6 +6,7 @@ import json
 import socket
 import logging
 import functools
+import http.client
 import webbrowser
 import contextlib
 import subprocess
@@ -53,8 +54,11 @@ Usage:
                                     [--repolinter-json FILE] [--output FILE]
                                     [--open] [--port N] [--verbose]
 
-    The report is ALWAYS served over HTTP on 0.0.0.0:8000 (change the port with
-    --port) until Ctrl-C, so it can be viewed from other machines.
+    The report is served over HTTP on 0.0.0.0:8000 (change the port with --port)
+    so it can be viewed from other machines. The server serves the whole reports
+    directory, so the first run holds the server (Ctrl-C to stop) and any later
+    run whose --port is already serving that directory just prints the URL and
+    exits -- one server serves every report, so runs don't pile up on new ports.
 
     repo_name -- github "owner/repo"; required because full_scan resolves the
                  repo license from it (see main.get_license).
@@ -744,18 +748,66 @@ def _lan_ip() -> str:
         return "0.0.0.0"
 
 
+def _report_reachable(port: int, filename: str) -> bool:
+    """
+    Report whether an HTTP server on 127.0.0.1:port already serves `filename`.
+
+    Used when the serve port is busy: if a report server from an earlier run is
+    already serving this report's directory, the freshly-written report is
+    reachable there, so that server can be reused instead of failing. A HEAD 200
+    for the exact (timestamped, effectively unique) filename means the running
+    server's directory is this report's directory -- a different server/dir 404s.
+
+    Args:
+        port (int): The busy port to probe.
+        filename (str): The report's basename to request at the server root.
+
+    Returns:
+        bool: True only if the probe returns HTTP 200 for that filename.
+    """
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        try:
+            conn.request("HEAD", "/" + filename)
+            resp = conn.getresponse()
+            resp.read()
+            return resp.status == 200
+        finally:
+            conn.close()
+    except (OSError, http.client.HTTPException):
+        return False
+
+
+def _print_serve_urls(port: int, filename: str, reused: bool) -> None:
+    """Print the local + shareable LAN URLs for a served report."""
+    local_url = f"http://localhost:{port}/{filename}"
+    lan_url = f"http://{_lan_ip()}:{port}/{filename}"
+    if reused:
+        print(f"{LOG_PREFIX} Port {port} is already serving this report directory "
+              f"(from an earlier run) -- your new report is available there:")
+    else:
+        print(f"{LOG_PREFIX} Serving report at:")
+    print(f"{LOG_PREFIX}   {lan_url}   (share this with other machines)")
+    print(f"{LOG_PREFIX}   {local_url}")
+
+
 def _serve_report(output_path: str, port: int, open_browser: bool) -> None:
     """
     Serve the report over HTTP on 0.0.0.0:port so other machines can view it.
 
-    Serves the report's directory (SimpleHTTPRequestHandler needs a directory);
-    blocks until Ctrl-C. Binding to 0.0.0.0 exposes that whole directory on the
-    network, so the exposed path is printed as a warning.
+    Serves the report's *directory* (SimpleHTTPRequestHandler needs a directory),
+    so every report written there is reachable at http://host:port/<file>. That
+    means a single long-lived server can serve all reports: when the port is
+    already taken by an EARLIER run of this tool serving the same directory, the
+    freshly-written report is already reachable there, so this reuses it (prints
+    the URL and returns immediately) instead of erroring out -- which is what
+    otherwise leaves a trail of servers on many ports. A freshly-started server
+    blocks until Ctrl-C; binding 0.0.0.0 exposes the directory on the network.
 
     Args:
         output_path (str): Absolute path to the written HTML report.
-        port (int): TCP port to bind.
-        open_browser (bool): Open the served URL locally when the server starts.
+        port (int): TCP port to bind (or reuse).
+        open_browser (bool): Open the served URL locally.
     """
     directory = os.path.dirname(output_path) or "."
     filename = os.path.basename(output_path)
@@ -768,7 +820,18 @@ def _serve_report(output_path: str, port: int, open_browser: bool) -> None:
         httpd = ThreadingHTTPServer(("0.0.0.0", port), handler)
         httpd.daemon_threads = True
     except OSError as exc:
-        # Port in use / not permitted. The report is already written, so do NOT
+        # Port busy. If an earlier run of this tool is already serving this
+        # report's directory on that port, the new report is already reachable
+        # there -- reuse it (no second server, no port sprawl) instead of erroring.
+        if _report_reachable(port, filename):
+            _print_serve_urls(port, filename, reused=True)
+            if open_browser:
+                try:
+                    webbrowser.open(f"http://localhost:{port}/{filename}")
+                except Exception:  # pylint: disable=broad-except
+                    pass
+            return
+        # Something else holds the port. The report is already written, so do NOT
         # crash the whole run after the (slow) scan -- report clearly and return.
         print(f"{LOG_PREFIX} Could not serve on port {port}: {exc}.", file=sys.stderr)
         print(f"{LOG_PREFIX} The report is saved at {output_path} -- open it "
@@ -776,16 +839,12 @@ def _serve_report(output_path: str, port: int, open_browser: bool) -> None:
               file=sys.stderr)
         return
 
-    local_url = f"http://localhost:{port}/{filename}"
-    lan_url = f"http://{_lan_ip()}:{port}/{filename}"
-    print(f"{LOG_PREFIX} Serving report at:")
-    print(f"{LOG_PREFIX}   {lan_url}   (share this with other machines)")
-    print(f"{LOG_PREFIX}   {local_url}")
+    _print_serve_urls(port, filename, reused=False)
     print(f"{LOG_PREFIX} NOTE: bound to 0.0.0.0 -- the whole directory '{directory}' "
           f"is exposed on your network. Ctrl-C to stop.", file=sys.stderr)
     if open_browser:
         try:
-            webbrowser.open(local_url)
+            webbrowser.open(f"http://localhost:{port}/{filename}")
         except Exception:  # pylint: disable=broad-except
             pass
     try:
@@ -850,8 +909,9 @@ def _serve_report(output_path: str, port: int, open_browser: bool) -> None:
 @click.option("--open", "open_browser", is_flag=True, default=False,
               help="Open the served report in a browser when the server starts.")
 @click.option("--port", default=8000, show_default=True, type=int,
-              help="Port to serve the report on. The report is ALWAYS served on "
-                   "0.0.0.0 until Ctrl-C; use this only to change the port.")
+              help="Port to serve the report on (0.0.0.0). The first run holds the "
+                   "server until Ctrl-C; a later run whose port already serves the "
+                   "reports dir reuses it (prints the URL and exits).")
 @click.option("--verbose", is_flag=True, default=False,
               help="Echo suppressed get_license/scan chatter to stderr.")
 def main(repo_name: str, repo_path: str, include_untracked: bool,

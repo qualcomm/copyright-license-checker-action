@@ -22,8 +22,15 @@ so there is no output-parsing drift. Run them from the **repo root** as
 | `compare_tools_remote.py` | Many repos across GitHub org(s) | Yes — enumerates orgs via the GitHub API and shallow-clones each into a temp dir (auto-cleaned) |
 
 Both write their report to `<repo-root>/reports/` (created on demand) and then **serve it
-over HTTP on `0.0.0.0:8000`** (change with `--port`) until you press Ctrl-C, so it can be
-opened from another machine.
+over HTTP on `0.0.0.0:8000`** (change with `--port`), so it can be opened from another machine.
+
+The server serves the whole `reports/` directory, so a single server covers every report you
+generate. The **first** run holds the server (Ctrl-C to stop). A **later** run whose `--port` is
+already serving that directory detects it, prints the URL for the new report, and exits
+immediately — it does **not** start a second server, so repeated runs don't pile up listeners on
+new ports. Every report is reachable at `http://localhost:8000/<report-file>.html`. (If the port
+is held by something unrelated, the tool says so and leaves the report on disk to open directly or
+serve with a different `--port`.)
 
 ## Prerequisites
 
@@ -69,8 +76,8 @@ python scripts/compare_tools.py <owner/repo> [--repo-path PATH] [--include-untra
 - `--output FILE` — report path. Default:
   `<repo-root>/reports/<project>_<YYYYMMDD-HHMMSS>.html`.
 - `--open` — open the served report in a browser when the server starts.
-- `--port N` — serve port (**default 8000**). The report is always served; use this only
-  to change the port.
+- `--port N` — serve port (**default 8000**). The first run holds the server; a later run whose
+  port is already serving the reports dir reuses it (prints the URL and exits).
 - `--verbose` — echo the suppressed `get_license`/scan chatter to stderr.
 
 Example:
