@@ -39,6 +39,8 @@ Usage:
                           --repo-path ~/clones/some-repo`.
     --include-untracked -- also scan untracked files that are not .gitignore'd
                           (not just git-tracked files). Off by default.
+    --include-licenseignore -- also scan files matched by the repo's
+                          .licenseignore (skipped by default). Off by default.
 
     repo_name and fail_on_findings stay positional so the existing action
     invocation (full-scan/action.yml) keeps working unchanged; fail_on_findings
@@ -158,15 +160,25 @@ def beautify_scan_output(flagged_files: dict, warning_files: dict,
          "--exclude-standard`). Use this to catch files that were added but "
          "not yet committed. Ignored files are still skipped.",
 )
+@click.option(
+    "--include-licenseignore",
+    is_flag=True,
+    default=False,
+    show_default=True,
+    help="Also scan files matched by the repo's .licenseignore (by default "
+         "those files are skipped). Use this to audit vendored/upstream paths "
+         "that .licenseignore normally excludes.",
+)
 def main(repo_name: str, fail_on_findings: str, repo_path: str,
-         include_untracked: bool) -> None:
+         include_untracked: bool, include_licenseignore: bool) -> None:
     """
     Scan a repository's source files for copyright and license compliance.
 
     Source files are fully checked; build files (.mk/.bp/.bb) are license-optional
     -- scanned for an incompatible license but not required to carry a header or
     copyright. By default only git-tracked files are scanned; pass
-    --include-untracked to also cover untracked-but-not-ignored files.
+    --include-untracked to also cover untracked-but-not-ignored files, and
+    --include-licenseignore to also cover files the repo's .licenseignore skips.
 
     REPO_NAME is the GitHub "owner/repo", used to resolve the repo license.
     FAIL_ON_FINDINGS is optional and defaults to "true": "true" exits non-zero
@@ -194,7 +206,8 @@ def main(repo_name: str, fail_on_findings: str, repo_path: str,
     else:
         allowed_licenses = [license]
 
-    repo_scan = RepoScan(include_untracked=include_untracked)
+    repo_scan = RepoScan(include_untracked=include_untracked,
+                         include_licenseignore=include_licenseignore)
     scanner = FullScanner(repo_scan, allowed_licenses)
 
     flagged_files, warning_files = scanner.run()

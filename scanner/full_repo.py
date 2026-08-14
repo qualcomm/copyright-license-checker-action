@@ -47,7 +47,8 @@ class RepoScan:
     covers untracked-but-not-ignored files (see __init__).
     """
 
-    def __init__(self, root: str = ".", include_untracked: bool = False) -> None:
+    def __init__(self, root: str = ".", include_untracked: bool = False,
+                 include_licenseignore: bool = False) -> None:
         """
         Initialize the RepoScan object by listing the repository's files under
         root.
@@ -62,8 +63,15 @@ class RepoScan:
                 that were added but not yet committed are also scanned. Ignored
                 files (build artifacts, virtualenvs, etc.) are never listed in
                 either mode.
+            include_licenseignore (bool): When False (the default), files matched
+                by the repo's .licenseignore are skipped. When True, those files
+                are scanned anyway (the .licenseignore is ignored). Files skipped
+                by .licenseignore are always recorded in get_ignored_files()
+                regardless of this flag, so callers can report why a file was
+                skipped.
         """
         self.root = root
+        self.include_licenseignore = include_licenseignore
         self.ignore_config = IgnoreConfig()
 
         # git ls-files lists tracked files, respecting .gitignore, without
@@ -82,21 +90,28 @@ class RepoScan:
         )
         listed_files = [line for line in result.stdout.splitlines() if line]
 
-        # Build the list of files the full-repo scan should cover.
+        # Build the list of files the full-repo scan should cover. Files matched
+        # by .licenseignore are also collected separately (self.ignored) so a
+        # caller can tell "skipped by .licenseignore" apart from "untracked".
         self.files = []
+        self.ignored = []
         for path_name in listed_files:
-            # Skip files that match hardcoded exclusions or config-based exclusions
+            # Skip files that match hardcoded exclusions.
             if path_name.endswith(EXCLUDED_EXTENSIONS):
                 continue
 
-            if self.ignore_config.is_excluded(path_name):
-                continue
-
-            # Keep fully-checked source files AND relaxed license-optional build
-            # files; drop everything else. (str.endswith accepts a tuple of
+            # Keep only fully-checked source files AND relaxed license-optional
+            # build files; drop everything else. (str.endswith accepts a tuple of
             # suffixes, so the concatenated tuple matches either tier.)
             if not path_name.endswith(SOURCE_FILE_EXTENSIONS + LICENSE_OPTIONAL_EXTENSIONS):
                 continue
+
+            # .licenseignore exclusion: record it either way, and skip it unless
+            # the caller opted in with include_licenseignore.
+            if self.ignore_config.is_excluded(path_name):
+                self.ignored.append(path_name)
+                if not self.include_licenseignore:
+                    continue
 
             self.files.append(path_name)
 
@@ -109,6 +124,19 @@ class RepoScan:
             list: A list of repository-relative file paths.
         """
         return self.files
+
+    def get_ignored_files(self) -> list:
+        """
+        Get the source/license-optional files that .licenseignore excluded.
+
+        These are always recorded, even when include_licenseignore is True (in
+        which case they are also scanned). Lets callers distinguish a file
+        skipped by .licenseignore from one that is simply untracked.
+
+        Returns:
+            list: A list of repository-relative file paths.
+        """
+        return self.ignored
 
     def is_license_optional(self, path_name: str) -> bool:
         """
