@@ -4,9 +4,10 @@ import sys
 
 import click
 
-from main import get_license, PERMISSIVE_LICENSES, COPYLEFT_LICENSES
+from main import PERMISSIVE_LICENSES, COPYLEFT_LICENSES
 from scanner.full_repo import RepoScan
 from scanner.full_scanner import FullScanner
+from scanner.license_resolver import resolve_license
 
 """
 Entry point for the full-repository scan.
@@ -198,7 +199,7 @@ def main(repo_name: str, fail_on_findings: str, repo_path: str,
     # and keeps main.py (get_license) untouched.
     os.chdir(repo_path)
 
-    license = get_license(repo_name)
+    license = resolve_license(repo_name)
     if license in PERMISSIVE_LICENSES:
         allowed_licenses = PERMISSIVE_LICENSES
     elif license in COPYLEFT_LICENSES:
