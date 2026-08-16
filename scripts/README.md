@@ -55,13 +55,14 @@ Runs both tools over one local checkout and renders where they agree/diverge per
 compatibility).
 
 ```
-python scripts/compare_tools.py <owner/repo> [--repo-path PATH] [--include-untracked]
+python scripts/compare_tools.py [owner/repo] [--repo-path PATH] [--include-untracked]
                                 [--ruleset-url URL] [--repolinter-json FILE]
                                 [--output FILE] [--open] [--port N] [--verbose]
 ```
 
-- `<owner/repo>` (positional, required) — used only to resolve the repo's expected
-  license (`main.get_license`).
+- `[owner/repo]` (positional, **optional**) — used to resolve the repo's expected
+  license (`main.get_license`) and to build report links. When omitted it is derived
+  from the `--repo-path` checkout's `origin` remote, so you usually don't need to pass it.
 - `--repo-path PATH` — the working tree to scan (default `.`). Resolved to an absolute
   path (required for the docker bind mount).
 - `--include-untracked` — also scan untracked-but-not-ignored files. repolinter always
@@ -98,9 +99,10 @@ sortable/filterable repos table; click a repo row to expand its per-file compari
 
 ```
 python scripts/compare_tools_remote.py [--orgs ORG ...] [--repos owner/repo ...]
-                                       [--max-repos N] [--include-archived]
-                                       [--workers N] [--ruleset-url URL]
-                                       [--output FILE] [--open] [--port N] [--verbose]
+                                       [--max-repos N] [--max-repo-size-mb MB]
+                                       [--include-archived] [--workers N]
+                                       [--ruleset-url URL] [--output FILE]
+                                       [--open] [--port N] [--verbose]
 ```
 
 - `--orgs ORG` (repeatable) — orgs to enumerate. Default:
@@ -109,8 +111,12 @@ python scripts/compare_tools_remote.py [--orgs ORG ...] [--repos owner/repo ...]
 - `--repos owner/repo` (repeatable) — scan exactly these repos and skip API enumeration.
 - `--max-repos N` — cap repos processed (`0` = no cap). scancode is slow, so a full-org
   run can take a long time; any truncation is logged (never silent).
-- `--include-archived` — include archived repos (excluded by default; forks and huge
-  kernel mirrors are always skipped).
+- `--max-repo-size-mb MB` — skip enumerated repos larger than this (**default 500**;
+  `0` disables). Excludes giant mirrors like the `qualcomm-linux` kernel trees
+  (2.5–3.8 GB) that are impractical to clone + scancode. Explicit `--repos` are never
+  size-filtered, so a big repo can still be forced that way. Skips are logged (never silent).
+- `--include-archived` — include archived repos (excluded by default; forks are always
+  skipped).
 - `--include-licenseignore` — also scan files the repo's `.licenseignore` excludes, for
   parity with repolinter (which ignores `.licenseignore`). Applies to every repo in the run.
 - `--workers N` — parallel worker **processes** (**default 4**). Processes, not threads:

@@ -49,7 +49,7 @@ is the centerpiece: it is the evidence for eventually retiring repolinter's
 license/copyright rules in favour of full_scan.
 
 Usage:
-    python scripts/compare_tools.py <repo_name> [--repo-path PATH] [--include-untracked]
+    python scripts/compare_tools.py [repo_name] [--repo-path PATH] [--include-untracked]
                                     [--include-licenseignore] [--ruleset-url URL]
                                     [--repolinter-json FILE] [--output FILE]
                                     [--open] [--port N] [--verbose]
@@ -60,8 +60,9 @@ Usage:
     run whose --port is already serving that directory just prints the URL and
     exits -- one server serves every report, so runs don't pile up on new ports.
 
-    repo_name -- github "owner/repo"; required because full_scan resolves the
-                 repo license from it (see main.get_license).
+    repo_name -- github "owner/repo"; full_scan resolves the repo license from it
+                 (see main.get_license). OPTIONAL: when omitted it is derived from
+                 the --repo-path checkout's `origin` remote.
 
     By default the report is written to
     <action-repo>/reports/<project>_<YYYYMMDD-HHMMSS>.html (the reports/ dir is
@@ -458,10 +459,12 @@ def normalize_repolinter(lint_result: dict) -> RepolinterView:
 # --------------------------------------------------------------------------- #
 
 def _compute_tags(record: ComparisonRecord, scanner_scope: set,
-                  include_untracked: bool, ignored_scope: set = None) -> list:
+                  include_untracked: bool, ignored_scope: set = None,
+                  rl_evaluated: set = None) -> list:
     """Compute human-readable divergence tags for one comparison record."""
     tags = []
     ignored_scope = ignored_scope or set()
+    rl_evaluated = rl_evaluated or set()
     scanner_kinds = {f.kind for f in record.scanner_findings}
     failed_rl = [f for f in record.repolinter_findings if not f.passed]
     failed_rules = {f.rule_name for f in failed_rl}
@@ -484,10 +487,13 @@ def _compute_tags(record: ComparisonRecord, scanner_scope: set,
     }:
         tags.append("copyright-holder agreement")
 
-    if record.category == "ONLY_FULL_SCAN" and record.ext in (
-        SCANNER_EXTS - REPOLINTER_HEADER_EXTS
-    ):
-        tags.append(f"scope: {record.ext} only scanned by full_scan")
+    # full_scan-only finding on a file repolinter NEVER evaluated: a scope
+    # difference, not a disagreement. Key off repolinter's actual evaluated set
+    # (not a guessed extension list) so a file repolinter did scan and passed
+    # (e.g. an uncertain-license .py) keeps only the compatibility tag rather
+    # than being mislabeled "not scanned by repolinter".
+    if record.category == "ONLY_FULL_SCAN" and record.path not in rl_evaluated:
+        tags.append(f"scope: {record.ext or 'file'} not scanned by repolinter")
     if record.category == "ONLY_REPOLINTER" and record.ext in (
         REPOLINTER_HEADER_EXTS - SCANNER_EXTS
     ):
@@ -567,7 +573,8 @@ def build_comparison(scanner_view: ScannerView, repolinter_view: RepolinterView,
             repolinter_findings=repolinter_findings,
         )
         record.tags = _compute_tags(record, scanner_view.scanned_paths,
-                                     include_untracked, scanner_view.ignored_paths)
+                                     include_untracked, scanner_view.ignored_paths,
+                                     repolinter_view.evaluated_paths)
         records.append(record)
 
     order = {"BOTH": 0, "ONLY_FULL_SCAN": 1, "ONLY_REPOLINTER": 2}
@@ -859,8 +866,41 @@ def _serve_report(output_path: str, port: int, open_browser: bool) -> None:
 # CLI
 # --------------------------------------------------------------------------- #
 
+def derive_repo_name(repo_path: str) -> str:
+    """
+    Derive the github "owner/repo" from a checkout's `origin` remote.
+
+    full_scan needs the repo name only to resolve the repo license
+    (main.get_license) and to build report links -- both of which the local
+    checkout already knows via its origin remote, so the caller does not have to
+    retype "owner/repo". Handles https, token-embedded https, and scp-style SSH
+    URLs (github.com and Enterprise) by taking the last two path segments.
+
+    Args:
+        repo_path (str): Path to the repository working tree.
+
+    Returns:
+        str: "owner/repo", or None when there is no origin remote to parse.
+    """
+    try:
+        url = subprocess.run(
+            ["git", "-C", repo_path, "remote", "get-url", "origin"],
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
+    except (subprocess.CalledProcessError, OSError):
+        return None
+    if not url:
+        return None
+    if url.endswith(".git"):
+        url = url[:-4]
+    segments = [seg for seg in re.split(r"[/:]", url) if seg]
+    if len(segments) < 2:
+        return None
+    return f"{segments[-2]}/{segments[-1]}"
+
+
 @click.command()
-@click.argument("repo_name")
+@click.argument("repo_name", required=False)
 @click.option(
     "--repo-path",
     default=".",
@@ -921,10 +961,25 @@ def main(repo_name: str, repo_path: str, include_untracked: bool,
     Compare repolinter and full_scan over a repository and write an HTML report.
 
     REPO_NAME is the github "owner/repo", used by full_scan to resolve the repo
-    license. This is a diagnostic: it exits 0 whenever a report was produced and
-    exits 2 only on an operational failure that prevents the comparison.
+    license. It is OPTIONAL: when omitted it is derived from the --repo-path
+    checkout's `origin` remote. This is a diagnostic: it exits 0 whenever a report
+    was produced and exits 2 only on an operational failure that prevents the
+    comparison.
     """
     logging.basicConfig(level=logging.WARNING)
+
+    # Derive owner/repo from the checkout's origin remote when not given, so the
+    # caller does not have to retype it.
+    if not repo_name:
+        repo_name = derive_repo_name(repo_path)
+        if not repo_name:
+            raise click.UsageError(
+                f"Could not derive owner/repo from the 'origin' remote of "
+                f"'{repo_path}'. Pass it explicitly, e.g.: compare_tools.py "
+                f"owner/repo --repo-path {repo_path}"
+            )
+        print(f"{LOG_PREFIX} Derived repo name '{repo_name}' from the origin remote "
+              f"of {repo_path}.", file=sys.stderr)
 
     # 1. full_scan (scancode is slow) -- must run before repolinter because it
     #    chdir's; it restores cwd, but keep the ordering explicit.
@@ -1081,6 +1136,9 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   .muted { color: var(--muted); } .empty { color: var(--muted); padding: 20px; text-align: center; }
   button.dl { background: var(--panel2); color: var(--fg); border: 1px solid var(--border);
     border-radius: 7px; padding: 7px 12px; cursor: pointer; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .caret { display: inline-block; width: 0.9em; color: var(--muted); font-size: 10px; }
 </style>
 </head>
 <body>
@@ -1184,17 +1242,30 @@ function esc(s) {
 }
 function sevClass(sev) { return sev === "error" ? "b-err" : "b-warn"; }
 
+// ---- GitHub links (repo default branch via /blob/HEAD/) ----
+const GH = "https://github.com/";
+function repoUrl() { return GH + DATA.meta.repo_name; }
+function fileUrl(path) {
+  return GH + DATA.meta.repo_name + "/blob/HEAD/" +
+    String(path).split("/").map(encodeURIComponent).join("/");
+}
+function link(href, text) {
+  // stopPropagation so clicking a link inside a clickable row does not toggle it.
+  return "<a href=\"" + href + "\" target=\"_blank\" rel=\"noopener\" " +
+    "onclick=\"event.stopPropagation()\">" + esc(text) + "</a>";
+}
+
 // ---- meta + banner ----
 const m = DATA.meta;
 document.getElementById("meta").innerHTML = [
-  ["Repository", m.repo_name],
-  ["Repo license (full_scan)", m.license],
-  ["Ruleset", m.ruleset_url],
-  ["Repolinter", m.repolinter_image + " (" + m.repolinter_source + ")"],
-  ["Scan scope", m.include_untracked ? "tracked + untracked" :
-     "tracked only (repolinter also scans untracked; pass --include-untracked for parity)"],
-  ["Generated", m.generated_at],
-].map(([k, v]) => "<b>" + esc(k) + "</b><span>" + esc(v) + "</span>").join("");
+  ["Repository", link(repoUrl(), m.repo_name)],
+  ["Repo license (full_scan)", esc(m.license)],
+  ["Ruleset", esc(m.ruleset_url)],
+  ["Repolinter", esc(m.repolinter_image + " (" + m.repolinter_source + ")")],
+  ["Scan scope", esc(m.include_untracked ? "tracked + untracked" :
+     "tracked only (repolinter also scans untracked; pass --include-untracked for parity)")],
+  ["Generated", esc(m.generated_at)],
+].map(([k, v]) => "<b>" + esc(k) + "</b><span>" + v + "</span>").join("");
 
 if (!m.repolinter_ok) {
   document.getElementById("banner").innerHTML =
@@ -1273,7 +1344,8 @@ function renderCmp() {
         (x.message ? ": " + esc(x.message) : "") + "</li>").join("") ||
         "<li class=muted>not evaluated by repolinter</li>") + "</ul></td></tr>";
     return "<tr class=\"row\" onclick=\"toggle(" + i + ")\">" +
-      "<td class=path>" + esc(f.path) + "</td>" +
+      "<td class=path><span class=\"caret\" id=\"c" + i + "\">▶</span> " +
+        link(fileUrl(f.path), f.path) + "</td>" +
       "<td>" + esc(f.ext || "—") + "</td>" +
       "<td>" + fsBadges(f.full_scan) + "</td>" +
       "<td>" + rlBadges(f.repolinter) + "</td>" +
@@ -1284,7 +1356,11 @@ function renderCmp() {
 }
 function toggle(i) {
   const d = document.getElementById("d" + i);
-  if (d) d.style.display = d.style.display === "none" ? "table-row" : "none";
+  if (!d) return;
+  const open = d.style.display === "none";
+  d.style.display = open ? "table-row" : "none";
+  const c = document.getElementById("c" + i);
+  if (c) c.textContent = open ? "▼" : "▶";
 }
 document.getElementById("search").oninput = e => {
   cmpState.search = e.target.value; renderCmp();
@@ -1325,13 +1401,13 @@ document.getElementById("rl-status").onchange = e => {
 
 // ---- full_scan all findings ----
 document.getElementById("fs-flagged").innerHTML = DATA.full_scan_all.flagged.map(f =>
-  "<tr><td class=path>" + esc(f.path) + "</td><td>" +
+  "<tr><td class=path>" + link(fileUrl(f.path), f.path) + "</td><td>" +
   (f.license_issues.map(esc).join("<br>") || "<span class=muted>—</span>") +
   "</td><td>" + (f.copyright_issues.map(esc).join("<br>") ||
   "<span class=muted>—</span>") + "</td></tr>").join("") ||
   "<tr><td colspan=3 class=empty>No blocking findings.</td></tr>";
 document.getElementById("fs-warning").innerHTML = DATA.full_scan_all.warning.map(f =>
-  "<tr><td class=path>" + esc(f.path) + "</td><td>" +
+  "<tr><td class=path>" + link(fileUrl(f.path), f.path) + "</td><td>" +
   (f.license_issues.map(esc).join("<br>") || "<span class=muted>—</span>") +
   "</td><td>" +
   ((f.copyright_issues || []).map(esc).join("<br>") || "<span class=muted>—</span>") +

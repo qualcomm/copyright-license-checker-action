@@ -38,8 +38,8 @@ Usage:
     python scripts/compare_tools_remote.py [--orgs ORG ...] [--repos owner/repo ...]
                                            [--max-repos N] [--include-archived]
                                            [--include-licenseignore] [--workers N]
-                                           [--ruleset-url URL] [--output FILE]
-                                           [--open] [--port N] [--verbose]
+                                           [--max-repo-size-mb MB] [--ruleset-url URL]
+                                           [--output FILE] [--open] [--port N] [--verbose]
 
     With no --orgs/--repos it enumerates the default Qualcomm public orgs. Use --repos
     owner/repo (repeatable) to scan an explicit set and skip API enumeration. The
@@ -61,8 +61,14 @@ GITHUB_HOST = "github.com"
 GITHUB_API = "https://api.github.com"
 DEFAULT_ORGS = ["qualcomm", "qualcomm-linux", "qualcomm-qrb-ros", "audioreach", "quic"]
 
-# Huge kernel mirrors -- a shallow clone + scancode run over these is impractical.
-SKIP_REPOS = {"linux-kernel", "linux-kernel-topics"}
+# Default per-repo size cap (MB) applied during org enumeration. Repos larger than
+# this are skipped: they are almost always giant mirrors (e.g. the qualcomm-linux
+# kernel trees, 2.5-3.8 GB) where a shallow clone + scancode run is impractical.
+# The GitHub 'size' field is in KB and includes history, so it over-estimates a
+# --depth=1 clone -- but it is a reliable "this is enormous, avoid it" signal.
+# Override with --max-repo-size-mb (0 disables the cap). Explicit --repos are never
+# size-filtered, so a giant repo can still be forced with --repos owner/name.
+DEFAULT_MAX_REPO_SIZE_MB = 500
 
 
 def _log(msg: str) -> None:
@@ -98,9 +104,10 @@ def _gh_get_json(url: str, token: str, ca_bundle: str):
 
 
 def list_org_repos(org: str, token: str, ca_bundle: str,
-                   include_archived: bool) -> list:
+                   include_archived: bool, max_repo_size_mb: int) -> list:
     """
-    List an org's public, non-fork repos (paginated), applying the skip filters.
+    List an org's public, non-fork repos (paginated), applying the fork/archived/size
+    filters.
 
     A listing failure for one org (rate limit, network, org not found) is logged and
     yields an empty list so the rest of the run continues.
@@ -110,6 +117,8 @@ def list_org_repos(org: str, token: str, ca_bundle: str,
         token (str): GITHUB_TOKEN or "".
         ca_bundle (str): CA bundle path or "".
         include_archived (bool): Keep archived repos (excluded by default).
+        max_repo_size_mb (int): Skip repos whose reported size exceeds this many MB
+            (0 disables the cap). See DEFAULT_MAX_REPO_SIZE_MB.
 
     Returns:
         list: [{"repo_name": "owner/name", "clone_url": "https://..."}].
@@ -143,9 +152,16 @@ def list_org_repos(org: str, token: str, ca_bundle: str,
             if entry.get("archived") and not include_archived:
                 continue
             name = entry.get("name")
-            if not name or name in SKIP_REPOS:
+            if not name:
                 continue
             owner = (entry.get("owner") or {}).get("login", org)
+            # Size-based skip for giant repos (kernel mirrors etc.). Logged per repo
+            # so the skip is never silent.
+            size_kb = entry.get("size") or 0
+            if max_repo_size_mb and size_kb > max_repo_size_mb * 1024:
+                _log(f"skipping {owner}/{name}: {size_kb // 1024} MB exceeds "
+                     f"--max-repo-size-mb={max_repo_size_mb} (force with --repos).")
+                continue
             repos.append({
                 "repo_name": f"{owner}/{name}",
                 "clone_url": (entry.get("clone_url")
@@ -158,12 +174,15 @@ def list_org_repos(org: str, token: str, ca_bundle: str,
 
 
 def resolve_repo_list(orgs: list, repos_filter: list, token: str, ca_bundle: str,
-                      include_archived: bool, max_repos: int) -> list:
+                      include_archived: bool, max_repos: int,
+                      max_repo_size_mb: int) -> list:
     """
     Build the final repo work-list from --repos (explicit) or --orgs (enumerated).
 
     De-duplicates by repo_name and applies --max-repos, logging any truncation so the
-    cap is never silent.
+    cap is never silent. The size cap (max_repo_size_mb) applies only to enumerated
+    orgs; an explicit --repos set is taken as-is (never size-filtered) so a giant repo
+    can be forced deliberately.
 
     Args:
         orgs (list): Orgs to enumerate (used only when repos_filter is empty).
@@ -172,6 +191,7 @@ def resolve_repo_list(orgs: list, repos_filter: list, token: str, ca_bundle: str
         ca_bundle (str): CA bundle path or "".
         include_archived (bool): Keep archived repos.
         max_repos (int): Hard cap on repos processed (0 = no cap).
+        max_repo_size_mb (int): Per-repo size cap in MB for enumerated orgs (0 = off).
 
     Returns:
         list: [{"repo_name", "clone_url"}] to scan.
@@ -191,7 +211,8 @@ def resolve_repo_list(orgs: list, repos_filter: list, token: str, ca_bundle: str
     else:
         result = []
         for org in orgs:
-            found = list_org_repos(org, token, ca_bundle, include_archived)
+            found = list_org_repos(org, token, ca_bundle, include_archived,
+                                   max_repo_size_mb)
             _log(f"org '{org}': {len(found)} repo(s) to scan")
             result.extend(found)
 
@@ -411,6 +432,11 @@ def _write_text(text: str, path: str) -> None:
 @click.option("--max-repos", type=int, default=0,
               help="Cap the number of repos processed (0 = no cap). scancode is slow, "
                    "so a full-org run can take a long time.")
+@click.option("--max-repo-size-mb", type=int, default=DEFAULT_MAX_REPO_SIZE_MB,
+              show_default=True,
+              help="Skip enumerated repos larger than this many MB (0 = no cap). "
+                   "Excludes giant mirrors like the kernel trees. Explicit --repos "
+                   "are never size-filtered, so a big repo can be forced that way.")
 @click.option("--include-archived", is_flag=True, default=False, show_default=True,
               help="Include archived repos (excluded by default).")
 @click.option("--include-licenseignore", is_flag=True, default=False,
@@ -437,8 +463,9 @@ def _write_text(text: str, path: str) -> None:
                    "the reports dir on this port (print the URL and exit).")
 @click.option("--verbose", is_flag=True, default=False,
               help="Echo suppressed get_license/scan chatter to stderr.")
-def main(orgs, repos_filter, max_repos, include_archived, include_licenseignore,
-         workers, ruleset_url, output, open_browser, port, verbose):
+def main(orgs, repos_filter, max_repos, max_repo_size_mb, include_archived,
+         include_licenseignore, workers, ruleset_url, output, open_browser, port,
+         verbose):
     """
     Compare repolinter and full_scan across many GitHub repos; write an HTML report.
 
@@ -455,7 +482,7 @@ def main(orgs, repos_filter, max_repos, include_archived, include_licenseignore,
 
     _log("Enumerating repositories...")
     repo_list = resolve_repo_list(orgs, repos_filter, token, ca_bundle,
-                                  include_archived, max_repos)
+                                  include_archived, max_repos, max_repo_size_mb)
     if not repo_list:
         _log("ERROR: no repositories to scan. With no --repos, enumeration returned "
              "nothing -- check --orgs, network, and GITHUB_TOKEN (rate limits).")
@@ -600,6 +627,9 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   .muted { color: var(--muted); } .empty { color: var(--muted); padding: 20px; text-align: center; }
   button.dl { background: var(--panel2); color: var(--fg); border: 1px solid var(--border);
     border-radius: 7px; padding: 7px 12px; cursor: pointer; margin-top: 10px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .caret { display: inline-block; width: 0.9em; color: var(--muted); font-size: 10px; }
 </style>
 </head>
 <body>
@@ -663,6 +693,19 @@ function esc(s) {
     {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
 }
 function sevClass(sev) { return sev === "error" ? "b-err" : "b-warn"; }
+
+// ---- GitHub links (repo default branch via /blob/HEAD/) ----
+const GH = "https://" + (DATA.meta.github_host || "github.com") + "/";
+function repoUrl(repo) { return GH + repo; }
+function fileUrl(repo, path) {
+  return GH + repo + "/blob/HEAD/" +
+    String(path).split("/").map(encodeURIComponent).join("/");
+}
+function link(href, text) {
+  // stopPropagation so clicking a link inside a clickable row does not toggle it.
+  return "<a href=\"" + href + "\" target=\"_blank\" rel=\"noopener\" " +
+    "onclick=\"event.stopPropagation()\">" + esc(text) + "</a>";
+}
 
 // ---- meta + cards ----
 const m = DATA.meta;
@@ -761,7 +804,7 @@ function repoDetail(r) {
       esc((r.summary || {}).scanned_files || 0) + " files scanned.</div>";
   }
   const rows = r.files.map(f =>
-    "<tr><td class=path>" + esc(f.path) + "</td><td>" + fsBadges(f.full_scan) +
+    "<tr><td class=path>" + link(fileUrl(r.repo_name, f.path), f.path) + "</td><td>" + fsBadges(f.full_scan) +
     "</td><td>" + rlBadges(f.repolinter) + "</td><td><span class=\"badge b-cat-" +
     f.category + "\">" + esc(f.category.replace(/_/g, " ")) + "</span></td><td>" +
     tagBadges(f.tags) + "</td></tr>").join("");
@@ -794,7 +837,8 @@ function renderRepos() {
         "<td class=num>" + esc(s.incompat_count || 0) + "</td>" +
         "<td class=num>" + (s.agreement_pct != null ? esc(s.agreement_pct) + "%" : "&mdash;") + "</td>";
     return "<tr class=\"row\" onclick=\"toggle(" + i + ")\">" +
-      "<td class=path>" + esc(r.repo_name) + "</td>" +
+      "<td class=path><span class=\"caret\" id=\"c" + i + "\">▶</span> " +
+        link(repoUrl(r.repo_name), r.repo_name) + "</td>" +
       "<td>" + esc(r.license || "&mdash;") + "</td>" +
       cells +
       "<td>" + statusBadge(statusOf(r)) + "</td></tr>" +
@@ -804,7 +848,11 @@ function renderRepos() {
 }
 function toggle(i) {
   const d = document.getElementById("d" + i);
-  if (d) d.style.display = d.style.display === "none" ? "table-row" : "none";
+  if (!d) return;
+  const open = d.style.display === "none";
+  d.style.display = open ? "table-row" : "none";
+  const c = document.getElementById("c" + i);
+  if (c) c.textContent = open ? "▼" : "▶";
 }
 document.getElementById("search").oninput = e => {
   state.search = e.target.value; renderRepos();
