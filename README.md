@@ -66,10 +66,8 @@ The action identifies source files based on their extensions and ensures that ap
 - `.patch` (Patch files)
 - `.bb` (BitBake recipe files)
 
-> **Note (full-repository scan only):** the whole-repo audit treats build-system
-> files `.mk`, `.bp`, and `.bb` as *license-optional* — they are scanned for an
-> incompatible license, but a missing license header or copyright is not flagged.
-> On the pull-request patch check above, `.bb` remains fully excluded.
+> **Note:** a separate whole-repository scan variant (with its own file-handling
+> rules) lives under [`full-scan/`](full-scan/README.md).
 
 ### Compliance Reporting
 The action provides a detailed report with two categories:
