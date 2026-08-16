@@ -287,7 +287,7 @@ def process_one_repo(task: dict) -> dict:
     Clone one repo, run both tools, and return a compact comparison record.
 
     Runs in a separate process (ProcessPoolExecutor): run_full_scan does a
-    process-global os.chdir and main.get_license reads cwd, so full_scan is not
+    process-global os.chdir and resolve_license reads cwd, so full_scan is not
     thread-safe -- one process per in-flight repo keeps cwd isolated. A fresh clone
     has everything git-tracked, so include_untracked is unnecessary and repolinter /
     full_scan see the same file set automatically.
@@ -462,7 +462,7 @@ def _write_text(text: str, path: str) -> None:
                    "server until Ctrl-C; later runs reuse a server already serving "
                    "the reports dir on this port (print the URL and exit).")
 @click.option("--verbose", is_flag=True, default=False,
-              help="Echo suppressed get_license/scan chatter to stderr.")
+              help="Echo suppressed resolve_license/scan chatter to stderr.")
 def main(orgs, repos_filter, max_repos, max_repo_size_mb, include_archived,
          include_licenseignore, workers, ruleset_url, output, open_browser, port,
          verbose):
