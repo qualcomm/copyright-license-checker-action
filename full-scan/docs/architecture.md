@@ -89,11 +89,11 @@ compliant file in the repo.
 ```mermaid
 flowchart TD
     subgraph RS["RepoScan (scanner/full_repo.py)"]
-        A1["git ls-files<br/>(tracked; + untracked with --include-untracked)"] --> A2{"excluded ext?<br/>.patch/.md/.json/.yml"}
+        A1["git ls-files<br/>(tracked; + untracked with --include-untracked)"] --> A2{"excluded ext?<br/>.patch/.md/.json/.yml/.bb/.bbclass/.bbappend"}
         A2 -->|yes| A3["skip"]
         A2 -->|no| A4{"matches .licenseignore?"}
         A4 -->|yes| A3
-        A4 -->|no| A5{"source ext (.c .cpp .cc .py .go .rs .S …)<br/>or license-optional (.mk/.bp/.bb/.bbclass)?"}
+        A4 -->|no| A5{"source ext (.c .cpp .cc .py .go .rs .S …)<br/>or license-optional (.mk/.bp)?"}
         A5 -->|no| A3
         A5 -->|yes| A6["keep in self.files"]
     end
@@ -113,9 +113,10 @@ flowchart TD
     end
 ```
 
-\* License-optional build files (`.mk`/`.bp`/`.bb`/`.bbclass`) are exempt from the
+\* License-optional build files (`.mk`/`.bp`) are exempt from the
 missing-header and missing-copyright checks; only an incompatible/uncertain license they
-actually carry is reported.
+actually carry is reported. BitBake files (`.bb`/`.bbclass`/`.bbappend`) are excluded from
+the scan entirely (not scanned at all).
 
 ---
 

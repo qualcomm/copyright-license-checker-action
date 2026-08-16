@@ -175,7 +175,7 @@ def main(repo_name: str, fail_on_findings: str, repo_path: str,
     """
     Scan a repository's source files for copyright and license compliance.
 
-    Source files are fully checked; build files (.mk/.bp/.bb) are license-optional
+    Source files are fully checked; build files (.mk/.bp) are license-optional
     -- scanned for an incompatible license but not required to carry a header or
     copyright. By default only git-tracked files are scanned; pass
     --include-untracked to also cover untracked-but-not-ignored files, and

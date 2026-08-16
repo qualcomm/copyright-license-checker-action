@@ -33,7 +33,7 @@ Uncertain / unknown licenses (LicenseRef-scancode-unknown*) and copyright holder
 that do not match the expected pattern are reported as non-blocking warnings,
 matching the semantics of main.is_uncertain_license_issue on the PR path.
 
-License-optional build files (RepoScan.LICENSE_OPTIONAL_EXTENSIONS -- .mk/.bp/.bb/.bbclass)
+License-optional build files (RepoScan.LICENSE_OPTIONAL_EXTENSIONS -- .mk/.bp)
 are the exception to the first and third checks: a missing license header or
 missing copyright is NOT flagged for them, but an incompatible license they
 carry is still a blocking error and an uncertain one still warns.
@@ -157,7 +157,7 @@ class FullScanner:
     """
     Class to scan every file surfaced by RepoScan (git-tracked, and optionally
     untracked-but-not-ignored) for license and copyright compliance. Source
-    files are fully checked; license-optional build files (.mk/.bp/.bb/.bbclass) are
+    files are fully checked; license-optional build files (.mk/.bp) are
     checked only for an incompatible/uncertain license (see run).
     """
 
@@ -387,7 +387,7 @@ class FullScanner:
         checked for a missing/incompatible license and a missing copyright
         (blocking), plus a copyright whose holder does not match the expected
         pattern (non-blocking warning). License-optional build files
-        (.mk/.bp/.bb/.bbclass) skip the missing-license and all copyright findings but are
+        (.mk/.bp) skip the missing-license and all copyright findings but are
         still flagged for an incompatible license.
 
         Returns:
@@ -409,7 +409,7 @@ class FullScanner:
                 # scancode returned nothing for this file (unreadable / skipped).
                 continue
 
-            # License-optional build files (.mk/.bp/.bb/.bbclass) relax the "missing
+            # License-optional build files (.mk/.bp) relax the "missing
             # license" and "missing copyright" findings, but an incompatible or
             # uncertain license they DO carry is still classified normally.
             license_optional = self.repo_scan.is_license_optional(path)
