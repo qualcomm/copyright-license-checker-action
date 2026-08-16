@@ -4,7 +4,7 @@ import sys
 
 import click
 
-from main import PERMISSIVE_LICENSES, COPYLEFT_LICENSES
+from scanner.licenses import PERMISSIVE_LICENSES, COPYLEFT_LICENSES
 from scanner.full_repo import RepoScan
 from scanner.full_scanner import FullScanner
 from scanner.license_resolver import resolve_license

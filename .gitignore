@@ -2,6 +2,10 @@
 venv/
 .venv/
 test*
+# The full-scan test suite is a real, tracked suite -- exempt it from the broad
+# test* rule above (which is meant for scratch/temp test files).
+!full-scan/tests/
+!full-scan/tests/**
 .vscode/
 __pycache__
 *.pyc

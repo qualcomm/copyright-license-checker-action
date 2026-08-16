@@ -24,11 +24,11 @@ runs:
       shell: bash
 
     - name: Install dependencies
-      run: pip install -r ${{ github.action_path }}/../requirements.txt
+      run: pip install -r ${{ github.action_path }}/requirements.txt
       shell: bash
 
     - name: Run full-repo scan
-      run: python "${{ github.action_path }}/../full_scan.py" "${{ inputs.repo_name }}" "${{ inputs.fail_on_findings }}"
+      run: python "${{ github.action_path }}/full_scan.py" "${{ inputs.repo_name }}" "${{ inputs.fail_on_findings }}"
       shell: bash
 
 branding:

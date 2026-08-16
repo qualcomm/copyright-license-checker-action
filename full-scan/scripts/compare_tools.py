@@ -22,7 +22,8 @@ import click
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # pylint: disable=wrong-import-position
-from main import get_license, PERMISSIVE_LICENSES, COPYLEFT_LICENSES
+from scanner.licenses import PERMISSIVE_LICENSES, COPYLEFT_LICENSES
+from scanner.license_resolver import resolve_license
 from scanner.full_repo import (
     RepoScan,
     SOURCE_FILE_EXTENSIONS,
@@ -61,7 +62,7 @@ Usage:
     exits -- one server serves every report, so runs don't pile up on new ports.
 
     repo_name -- github "owner/repo"; full_scan resolves the repo license from it
-                 (see main.get_license). OPTIONAL: when omitted it is derived from
+                 (see resolve_license). OPTIONAL: when omitted it is derived from
                  the --repo-path checkout's `origin` remote.
 
     By default the report is written to
@@ -232,16 +233,16 @@ def run_full_scan(repo_name: str, repo_path: str, include_untracked: bool,
     Run our full-repo scanner in-process and return structured results.
 
     Replicates full_scan.main (resolve license -> allowed set -> RepoScan ->
-    FullScanner.run) WITHOUT its sys.exit. get_license and RepoScan are
+    FullScanner.run) WITHOUT its sys.exit. resolve_license and RepoScan are
     cwd-relative, so we chdir into repo_path and restore cwd in a finally (chdir
-    is process-global and full_scan never restores it). get_license prints to
+    is process-global and full_scan never restores it). resolve_license prints to
     stdout, so its output is captured (echoed to stderr only under --verbose).
 
     Args:
         repo_name (str): The github "owner/repo" (for license resolution).
         repo_path (str): Absolute path to the repository working tree.
         include_untracked (bool): Also scan untracked-but-not-ignored files.
-        verbose (bool): Echo captured get_license chatter to stderr.
+        verbose (bool): Echo captured resolve_license chatter to stderr.
         include_licenseignore (bool): Also scan files matched by .licenseignore.
 
     Returns:
@@ -254,7 +255,7 @@ def run_full_scan(repo_name: str, repo_path: str, include_untracked: bool,
     try:
         os.chdir(repo_path)
         with contextlib.redirect_stdout(captured):
-            license_id = get_license(repo_name)
+            license_id = resolve_license(repo_name)
         if license_id in PERMISSIVE_LICENSES:
             allowed_licenses = PERMISSIVE_LICENSES
         elif license_id in COPYLEFT_LICENSES:
@@ -871,7 +872,7 @@ def derive_repo_name(repo_path: str) -> str:
     Derive the github "owner/repo" from a checkout's `origin` remote.
 
     full_scan needs the repo name only to resolve the repo license
-    (main.get_license) and to build report links -- both of which the local
+    (resolve_license) and to build report links -- both of which the local
     checkout already knows via its origin remote, so the caller does not have to
     retype "owner/repo". Handles https, token-embedded https, and scp-style SSH
     URLs (github.com and Enterprise) by taking the last two path segments.
@@ -953,7 +954,7 @@ def derive_repo_name(repo_path: str) -> str:
                    "server until Ctrl-C; a later run whose port already serves the "
                    "reports dir reuses it (prints the URL and exits).")
 @click.option("--verbose", is_flag=True, default=False,
-              help="Echo suppressed get_license/scan chatter to stderr.")
+              help="Echo suppressed resolve_license/scan chatter to stderr.")
 def main(repo_name: str, repo_path: str, include_untracked: bool,
          include_licenseignore: bool, ruleset_url: str, repolinter_json: str,
          output: str, open_browser: bool, port: int, verbose: bool) -> None:
