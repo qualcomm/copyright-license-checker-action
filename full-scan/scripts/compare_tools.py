@@ -1216,8 +1216,9 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
         evaluate whether the license is <i>allowed</i>. full_scan's
         <code>INCOMPAT</code>/<code>UNCERT</code> findings have no repolinter analog.</li>
       <li><b>Extension scope differs.</b> Only full_scan scans
-        <code>.rb .swift .kt .kts .mk .bp .bb</code>; only repolinter scans
-        <code>.cc .rs .bbclass .S</code>.</li>
+        <code>.py .rb .swift .kt .kts .mk .bp</code>; only repolinter scans
+        <code>.bbclass</code>. full_scan excludes BitBake files
+        (<code>.bb .bbclass .bbappend</code>) entirely.</li>
       <li><b>Tracked vs working tree.</b> repolinter scans the whole working tree;
         full_scan scans git-tracked files unless <code>--include-untracked</code> is set.</li>
       <li><b>.licenseignore.</b> full_scan honors the repo's <code>.licenseignore</code>;
