@@ -12,36 +12,35 @@ was enabled and therefore never appeared in any scanned PR diff.
 
 Two tiers of files are listed: fully-checked source files (SOURCE_FILE_EXTENSIONS)
 and "license-optional" build-system files (LICENSE_OPTIONAL_EXTENSIONS, e.g.
-.mk/.bp/.bb) that are scanned for an incompatible license but are not required to
+.mk/.bp/.bb/.bbclass) that are scanned for an incompatible license but are not required to
 carry a license header or copyright. See FullScanner.run for the relaxed handling.
 """
 
 # Source file extensions the full-repo scan covers. Kept in sync with
 # LicenseChecker.is_source_file so both paths agree on what "source" means.
 SOURCE_FILE_EXTENSIONS = (
-    '.c', '.cpp', '.h', '.hpp', '.java', '.py', '.js', '.ts',
-    '.rb', '.go', '.swift', '.kt', '.kts', '.sh'
-)
+    '.c', '.cpp', '.cc', '.h', '.hpp', '.java', '.py', '.js', '.ts',
+    '.rb', '.go', '.swift', '.kt', '.kts', '.sh', '.rs', '.S')
 
 # Build-system files scanned under a relaxed "license-optional" tier: a MISSING
 # license header or MISSING copyright is NOT flagged (these files routinely have
 # neither), but a present-but-incompatible license is STILL a blocking error and
 # an uncertain license still warns -- classify_license runs normally whenever a
 # license is actually detected. See FullScanner.run.
-LICENSE_OPTIONAL_EXTENSIONS = ('.mk', '.bp', '.bb')
+LICENSE_OPTIONAL_EXTENSIONS = ('.mk', '.bp')
 
 # Extensions excluded from the checks, mirroring scanner.patch.Patch's hardcoded
 # exclusions so the full-repo and PR paths skip the same non-source files.
 # NOTE: .bb was moved to LICENSE_OPTIONAL_EXTENSIONS -- on the full-repo scan it
 # is now scanned for incompatible licenses rather than skipped outright. The PR
 # path (scanner/patch.py) still excludes .bb and is intentionally left unchanged.
-EXCLUDED_EXTENSIONS = ('.patch', '.md', '.json', '.yml')
+EXCLUDED_EXTENSIONS = ('.patch', '.md', '.json', '.yml', '.bb', '.bbclass', '.bbappend')
 
 
 class RepoScan:
     """
     Class to represent the set of files in a working tree to scan: fully-checked
-    source files plus license-optional build files (.mk/.bp/.bb).
+    source files plus license-optional build files (.mk/.bp/.bb/.bbclass).
 
     By default this is the git-tracked files; with include_untracked it also
     covers untracked-but-not-ignored files (see __init__).
@@ -140,7 +139,7 @@ class RepoScan:
 
     def is_license_optional(self, path_name: str) -> bool:
         """
-        Report whether a path is a "license-optional" build file (.mk/.bp/.bb).
+        Report whether a path is a "license-optional" build file (.mk/.bp/.bb/.bbclass).
 
         These files are scanned, but a missing license header or missing
         copyright is not flagged; only a present-but-incompatible (or uncertain)
