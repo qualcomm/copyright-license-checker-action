@@ -33,7 +33,7 @@ Uncertain / unknown licenses (LicenseRef-scancode-unknown*) and copyright holder
 that do not match the expected pattern are reported as non-blocking warnings,
 matching the semantics of main.is_uncertain_license_issue on the PR path.
 
-License-optional build files (RepoScan.LICENSE_OPTIONAL_EXTENSIONS -- .mk/.bp/.bb)
+License-optional build files (RepoScan.LICENSE_OPTIONAL_EXTENSIONS -- .mk/.bp/.bb/.bbclass)
 are the exception to the first and third checks: a missing license header or
 missing copyright is NOT flagged for them, but an incompatible license they
 carry is still a blocking error and an uncertain one still warns.
@@ -157,7 +157,7 @@ class FullScanner:
     """
     Class to scan every file surfaced by RepoScan (git-tracked, and optionally
     untracked-but-not-ignored) for license and copyright compliance. Source
-    files are fully checked; license-optional build files (.mk/.bp/.bb) are
+    files are fully checked; license-optional build files (.mk/.bp/.bb/.bbclass) are
     checked only for an incompatible/uncertain license (see run).
     """
 
@@ -197,14 +197,20 @@ class FullScanner:
     def is_expression_permissive(self, expression: str) -> bool:
         """
         Evaluate whether an SPDX license expression is permissive, honoring
-        AND / OR structure.
+        AND / OR structure: an OR group passes if at least one option is
+        permissive; an AND group requires every group to be permissive.
+        Flattening the expression (as a naive check would) is wrong -- it would
+        block a valid dual-license such as "MIT OR GPL-2.0-only" and would fail
+        to notice a disallowed license hidden in an AND group.
 
-        This mirrors LicenseChecker.is_license_permissive on the PR path so the
-        two scans agree: for an OR group at least one option must be permissive;
-        for an AND group every group must be permissive. Flattening the
-        expression (as a naive check would) is wrong -- it would block a valid
-        dual-license such as "MIT OR GPL-2.0-only" and would fail to notice a
-        disallowed license hidden in an AND group.
+        NOTE: this intentionally does NOT mirror LicenseChecker.is_license_permissive
+        on the PR path. That path short-circuits on a leading "(X OR Y) AND ..."
+        group and ignores the trailing AND terms (treating them as comment-derived
+        noise it cannot filter). FullScanner filters that noise upstream via
+        confident_license_expression, so here every AND term is a real detection and
+        MUST be evaluated -- otherwise an incompatible license after a permissive OR
+        group (e.g. "(MIT OR Apache-2.0) AND GPL-2.0") would wrongly pass. The
+        PR-path short-circuit is tracked as a separate patch-scan-owner issue.
 
         Args:
             expression (str): The SPDX license expression to evaluate.
@@ -214,14 +220,10 @@ class FullScanner:
         """
         expression = expression.strip()
 
-        # Dual-license pattern: "(X OR Y) AND ..." -- if the leading OR group has
-        # a permissive option we accept it (matches the PR path's handling).
-        if expression.startswith('(') and ' OR ' in expression.split(')')[0]:
-            or_part = expression.split(')')[0] + ')'
-            or_licenses = [lic.strip() for lic in or_part.strip('()').split(' OR ')]
-            return any(lic in self.permissive_licenses for lic in or_licenses)
-
-        # Standard evaluation: every AND group must be permissive.
+        # Every AND group must be permissive; within a group with an OR, at least
+        # one option must be permissive. This correctly handles a leading
+        # "(X OR Y) AND Z" -- the OR group passes on a permissive option AND the
+        # trailing Z is still checked (unlike the PR path; see the docstring).
         for and_group in expression.split(' AND '):
             and_group = and_group.strip()
             if ' OR ' in and_group:
@@ -385,7 +387,7 @@ class FullScanner:
         checked for a missing/incompatible license and a missing copyright
         (blocking), plus a copyright whose holder does not match the expected
         pattern (non-blocking warning). License-optional build files
-        (.mk/.bp/.bb) skip the missing-license and all copyright findings but are
+        (.mk/.bp/.bb/.bbclass) skip the missing-license and all copyright findings but are
         still flagged for an incompatible license.
 
         Returns:
@@ -407,7 +409,7 @@ class FullScanner:
                 # scancode returned nothing for this file (unreadable / skipped).
                 continue
 
-            # License-optional build files (.mk/.bp/.bb) relax the "missing
+            # License-optional build files (.mk/.bp/.bb/.bbclass) relax the "missing
             # license" and "missing copyright" findings, but an incompatible or
             # uncertain license they DO carry is still classified normally.
             license_optional = self.repo_scan.is_license_optional(path)
