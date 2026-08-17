@@ -28,7 +28,11 @@ runs:
       shell: bash
 
     - name: Run checker
-      run: python "${{ github.action_path }}/main.py" "${{ inputs.patch_file }}" "${{ inputs.repo_name }}"
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        PATCH_FILE: ${{ inputs.patch_file }}
+        REPO_NAME: ${{ inputs.repo_name }}
+      run: python "$ACTION_PATH/main.py" "$PATCH_FILE" "$REPO_NAME"
       shell: bash
 
 branding:
