@@ -1,3 +1,6 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+
 from scanner.full_scanner import FullScanner
 from scanner.licenses import PERMISSIVE_LICENSES
 
