@@ -75,3 +75,21 @@ def test_bb_is_excluded_not_license_optional(fake_ls_files):
     assert repo.is_license_optional("app.bbappend") is False
     assert repo.is_license_optional("Android.mk") is True
     assert repo.is_license_optional("Android.bp") is True
+
+
+def test_license_optional_files_by_basename(fake_ls_files):
+    fake_ls_files("")
+    repo = RepoScan()
+    # __init__.py is license-optional at any depth (matched by basename), while a
+    # normal source .py is fully checked.
+    assert repo.is_license_optional("__init__.py") is True
+    assert repo.is_license_optional("pkg/sub/__init__.py") is True
+    assert repo.is_license_optional("full_scan.py") is False
+    assert repo.is_license_optional("scanner/config.py") is False
+
+
+def test_init_py_is_enumerated(fake_ls_files):
+    fake_ls_files("pkg/__init__.py\npkg/mod.py\nREADME.md\n")
+    # __init__.py is still scanned (it is .py); README.md is excluded. The
+    # license-optional tier only relaxes findings, it does not drop the file.
+    assert RepoScan().get_files() == ["pkg/__init__.py", "pkg/mod.py"]

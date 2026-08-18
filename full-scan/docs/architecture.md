@@ -93,7 +93,7 @@ flowchart TD
         A2 -->|yes| A3["skip"]
         A2 -->|no| A4{"matches .licenseignore?"}
         A4 -->|yes| A3
-        A4 -->|no| A5{"source ext (.c .cpp .cc .py .go .rs .S …)<br/>or license-optional (.mk/.bp)?"}
+        A4 -->|no| A5{"source ext (.c .cpp .cc .py .go .rs .S …)<br/>or license-optional (.mk/.bp ext, or __init__.py file)?"}
         A5 -->|no| A3
         A5 -->|yes| A6["keep in self.files"]
     end
@@ -113,10 +113,11 @@ flowchart TD
     end
 ```
 
-\* License-optional build files (`.mk`/`.bp`) are exempt from the
-missing-header and missing-copyright checks; only an incompatible/uncertain license they
-actually carry is reported. BitBake files (`.bb`/`.bbclass`/`.bbappend`) are excluded from
-the scan entirely (not scanned at all).
+\* License-optional files are exempt from the missing-header and missing-copyright checks;
+only an incompatible/uncertain license they actually carry is reported. This tier is keyed
+by extension (`LICENSE_OPTIONAL_EXTENSIONS` — `.mk`/`.bp` build files) and by filename
+(`LICENSE_OPTIONAL_FILES` — e.g. `__init__.py`, matched by basename). BitBake files
+(`.bb`/`.bbclass`/`.bbappend`) are excluded from the scan entirely (not scanned at all).
 
 ---
 
