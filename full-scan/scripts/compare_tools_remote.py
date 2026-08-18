@@ -36,13 +36,16 @@ favour of full_scan.
 
 Usage:
     python scripts/compare_tools_remote.py [--orgs ORG ...] [--repos owner/repo ...]
-                                           [--max-repos N] [--include-archived]
-                                           [--include-licenseignore] [--workers N]
-                                           [--max-repo-size-mb MB] [--ruleset-url URL]
-                                           [--output FILE] [--open] [--port N] [--verbose]
+                                           [--branch REF] [--max-repos N]
+                                           [--include-archived] [--include-licenseignore]
+                                           [--workers N] [--max-repo-size-mb MB]
+                                           [--ruleset-url URL] [--output FILE] [--open]
+                                           [--port N] [--verbose]
 
     With no --orgs/--repos it enumerates the default Qualcomm public orgs. Use --repos
-    owner/repo (repeatable) to scan an explicit set and skip API enumeration. The
+    owner/repo (repeatable) to scan an explicit set and skip API enumeration; add
+    --branch/--ref REF to clone a specific branch/tag of those repos instead of their
+    default branch (e.g. --repos qualcomm/test_sshedge --branch full-matrix-fixtures). The
     aggregate report is served on 0.0.0.0:<port> (default 8000); the report server
     serves the whole reports dir, so the first run holds the server (Ctrl-C to stop)
     and later runs whose port is already serving that dir just print the URL and exit.
@@ -235,7 +238,8 @@ def resolve_repo_list(orgs: list, repos_filter: list, token: str, ca_bundle: str
 # Clone + per-repo comparison (the ProcessPool worker)
 # --------------------------------------------------------------------------- #
 
-def clone_repo(clone_url: str, dest: str, token: str, ca_bundle: str) -> tuple:
+def clone_repo(clone_url: str, dest: str, token: str, ca_bundle: str,
+               ref: str = None) -> tuple:
     """
     Shallow-clone a repo into dest.
 
@@ -247,6 +251,10 @@ def clone_repo(clone_url: str, dest: str, token: str, ca_bundle: str) -> tuple:
         dest (str): Target directory (must not already exist).
         token (str): GITHUB_TOKEN or "".
         ca_bundle (str): CA bundle path or "" (sets GIT_SSL_CAINFO).
+        ref (str): Branch or tag to clone (via `git clone --branch`). None (the
+            default) clones the repo's default branch. `--depth=1` still applies,
+            so only that ref's tip is fetched. A ref absent from a given repo makes
+            its clone fail, which the caller records as a per-repo clone_failed.
 
     Returns:
         tuple: (ok: bool, err: str). err is "" on success.
@@ -257,9 +265,13 @@ def clone_repo(clone_url: str, dest: str, token: str, ca_bundle: str) -> tuple:
     env = os.environ.copy()
     if ca_bundle:
         env["GIT_SSL_CAINFO"] = ca_bundle
+    cmd = ["git", "clone", "--depth=1", "--quiet"]
+    if ref:
+        cmd += ["--branch", ref]
+    cmd += [url, dest]
     try:
         proc = subprocess.run(
-            ["git", "clone", "--depth=1", "--quiet", url, dest],
+            cmd,
             capture_output=True, text=True, env=env, check=False, timeout=600,
         )
     except FileNotFoundError:
@@ -293,7 +305,8 @@ def process_one_repo(task: dict) -> dict:
     full_scan see the same file set automatically.
 
     Args:
-        task (dict): {repo_name, clone_url, ruleset_url, token, ca_bundle, verbose}.
+        task (dict): {repo_name, clone_url, ruleset_url, token, ca_bundle, verbose,
+              include_licenseignore, ref}.
 
     Returns:
         dict: Compact per-repo record (summary + files + repolinter_all), or an error
@@ -303,7 +316,7 @@ def process_one_repo(task: dict) -> dict:
     with tempfile.TemporaryDirectory(prefix="cmpremote-") as tmp:
         dest = os.path.join(tmp, "repo")
         ok, clone_err = clone_repo(task["clone_url"], dest, task["token"],
-                                   task["ca_bundle"])
+                                   task["ca_bundle"], task.get("ref"))
         if not ok:
             return _error_record(repo_name, "clone_failed", clone_err)
 
@@ -429,6 +442,11 @@ def _write_text(text: str, path: str) -> None:
                    "public orgs. Ignored when --repos is given.")
 @click.option("--repos", "repos_filter", multiple=True,
               help="Explicit owner/repo to scan (repeatable); skips org enumeration.")
+@click.option("--branch", "--ref", "ref", default=None,
+              help="Branch or tag to clone for EVERY repo (via git clone --branch), "
+                   "instead of each repo's default branch. Intended for --repos (a "
+                   "specific branch/tag of a known repo); with org enumeration, any "
+                   "repo lacking this ref is recorded as a clone failure.")
 @click.option("--max-repos", type=int, default=0,
               help="Cap the number of repos processed (0 = no cap). scancode is slow, "
                    "so a full-org run can take a long time.")
@@ -463,7 +481,7 @@ def _write_text(text: str, path: str) -> None:
                    "the reports dir on this port (print the URL and exit).")
 @click.option("--verbose", is_flag=True, default=False,
               help="Echo suppressed resolve_license/scan chatter to stderr.")
-def main(orgs, repos_filter, max_repos, max_repo_size_mb, include_archived,
+def main(orgs, repos_filter, ref, max_repos, max_repo_size_mb, include_archived,
          include_licenseignore, workers, ruleset_url, output, open_browser, port,
          verbose):
     """
@@ -488,13 +506,18 @@ def main(orgs, repos_filter, max_repos, max_repo_size_mb, include_archived,
              "nothing -- check --orgs, network, and GITHUB_TOKEN (rate limits).")
         sys.exit(2)
 
-    _log(f"Scanning {len(repo_list)} repo(s) with {workers} worker(s). scancode is "
-         f"slow -- this can take a while.")
+    if ref and not repos_filter:
+        _log(f"NOTE: --branch/--ref '{ref}' applies to every enumerated repo; any repo "
+             f"without that ref will be recorded as a clone failure.")
+
+    _log(f"Scanning {len(repo_list)} repo(s) with {workers} worker(s)"
+         f"{f' on ref {ref!r}' if ref else ''}. scancode is slow -- this can take a while.")
 
     tasks = [{
         "repo_name": r["repo_name"], "clone_url": r["clone_url"],
         "ruleset_url": ruleset_url, "token": token, "ca_bundle": ca_bundle,
         "verbose": verbose, "include_licenseignore": include_licenseignore,
+        "ref": ref,
     } for r in repo_list]
 
     results = []
@@ -526,6 +549,7 @@ def main(orgs, repos_filter, max_repos, max_repo_size_mb, include_archived,
     output = ct.resolve_output_path(output, "multi", now)
     meta = {
         "orgs": orgs if not repos_filter else ["(explicit --repos)"],
+        "ref": ref or "(default branch)",
         "ruleset_url": ruleset_url,
         "repolinter_image": ct.REPOLINTER_IMAGE,
         "github_host": GITHUB_HOST,
@@ -694,11 +718,22 @@ function esc(s) {
 }
 function sevClass(sev) { return sev === "error" ? "b-err" : "b-warn"; }
 
-// ---- GitHub links (repo default branch via /blob/HEAD/) ----
+// ---- GitHub links (point at the scanned ref; falls back to HEAD) ----
 const GH = "https://" + (DATA.meta.github_host || "github.com") + "/";
-function repoUrl(repo) { return GH + repo; }
+// The ref the run actually cloned (--branch/--ref). meta.ref is the sentinel
+// "(default branch)" when unset, in which case HEAD is the right target. Encode
+// per path segment so a ref like "feature/x" keeps its slashes.
+function refSlug() {
+  const r = DATA.meta.ref;
+  if (!r || r === "(default branch)") return "HEAD";
+  return String(r).split("/").map(encodeURIComponent).join("/");
+}
+function repoUrl(repo) {
+  const ref = refSlug();
+  return GH + repo + (ref === "HEAD" ? "" : "/tree/" + ref);
+}
 function fileUrl(repo, path) {
-  return GH + repo + "/blob/HEAD/" +
+  return GH + repo + "/blob/" + refSlug() + "/" +
     String(path).split("/").map(encodeURIComponent).join("/");
 }
 function link(href, text) {
@@ -711,6 +746,7 @@ function link(href, text) {
 const m = DATA.meta;
 document.getElementById("meta").innerHTML = [
   ["Orgs", (m.orgs || []).join(", ")],
+  ["Ref", m.ref || "(default branch)"],
   ["Ruleset", m.ruleset_url],
   ["Repolinter", m.repolinter_image],
   ["GitHub host", m.github_host],
