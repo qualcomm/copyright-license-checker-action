@@ -1,0 +1,7 @@
+# Extra dependencies for the full-scan/scripts/ tools (NOT the GitHub Action, which
+# installs full-scan/requirements.txt). Install with:
+#   pip install -r full-scan/scripts/requirements.txt
+#
+# jira_scan.py talks to Jira via the public jira-python library. This intentionally
+# depends only on public PyPI -- no internal/shared Qualcomm package.
+jira~=3.10
