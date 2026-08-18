@@ -74,3 +74,37 @@ def test_allowed_license_selection(monkeypatch, tmp_path, resolved, expected_all
 
     assert result.exit_code == 0, result.output
     assert captured["allowed"] == expected_allowed
+
+
+def _boom_if_scanned(*args, **kwargs):
+    raise AssertionError("scan must be skipped when there is no license baseline")
+
+
+def test_missing_root_license_blocks_when_failon(monkeypatch, tmp_path):
+    # resolve_license -> None (no root license file, no config entry) with
+    # fail_on_findings=true: abort with the status and a non-zero exit, and prove
+    # the scan is skipped (RepoScan/FullScanner would raise if reached).
+    monkeypatch.setattr(full_scan, "resolve_license", lambda repo_name: None)
+    monkeypatch.setattr(full_scan, "RepoScan", _boom_if_scanned)
+    monkeypatch.setattr(full_scan, "FullScanner", _boom_if_scanned)
+    monkeypatch.setattr(full_scan.os, "chdir", lambda path: None)
+
+    result = CliRunner().invoke(
+        full_scan.main, ["owner/repo", "true", "--repo-path", str(tmp_path)])
+
+    assert result.exit_code == 1, result.output
+    assert "No Root-Level Licence Found" in result.output
+
+
+def test_missing_root_license_reports_only(monkeypatch, tmp_path):
+    # Same abort, report-only: exit 0, status still printed, scan still skipped.
+    monkeypatch.setattr(full_scan, "resolve_license", lambda repo_name: None)
+    monkeypatch.setattr(full_scan, "RepoScan", _boom_if_scanned)
+    monkeypatch.setattr(full_scan, "FullScanner", _boom_if_scanned)
+    monkeypatch.setattr(full_scan.os, "chdir", lambda path: None)
+
+    result = CliRunner().invoke(
+        full_scan.main, ["owner/repo", "false", "--repo-path", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "No Root-Level Licence Found" in result.output

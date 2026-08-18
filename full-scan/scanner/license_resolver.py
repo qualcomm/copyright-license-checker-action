@@ -23,9 +23,17 @@ that (mis)detection becomes the repo's resolved license, the allowed-set is
 poisoning the whole baseline.
 
 The resolution order mirrors main.get_license (LICENSE file -> config map ->
-default), with one hardening step: a LICENSE-file detection that yields ONLY
-scancode's unreliable proprietary catch-all is treated as inconclusive and falls
-through to the config map / default, rather than trusting it.
+default), with two full_scan-only differences:
+  * a LICENSE-file detection that yields ONLY scancode's unreliable proprietary
+    catch-all is treated as inconclusive and falls through to the config map /
+    default, rather than trusting it; and
+  * the BSD-3-Clause-Clear default is NOT assigned out of thin air: when the repo
+    has NO root-level license file AND no config-map entry, resolution returns
+    None so the caller can abort with a clear "No Root-Level Licence Found" status
+    instead of scanning every file against a fabricated permissive baseline (which
+    mass-flagged a GPL repo with no LICENSE file, e.g. qualcomm-linux/eva-driver).
+    The default is kept only when a license file physically exists but could not
+    be resolved.
 
 main.get_license / main.detect_license_from_file are intentionally left as-is
 (they belong to the PR/patch-scan path, owned separately); the same mis-resolution
@@ -36,11 +44,20 @@ LOG_PREFIX = "< full-repo license/copyright check >"
 
 DEFAULT_LICENSE = "BSD-3-Clause-Clear"
 
-# LICENSE-file candidates, in the same order main.get_license checks them.
+# Root-level license-file candidates. Superset of the list main.get_license
+# checks: because resolution now ABORTS ("No Root-Level Licence Found") when no
+# candidate exists, a missed-but-valid filename would produce a misleading "no
+# licence" verdict, so the recognized set is broadened to cover the British
+# spelling (LICENCE), the all-lowercase form (license), and COPYING.md. Order is
+# preference order; the first existing file wins.
 LICENSE_FILE_CANDIDATES = [
     'LICENSE', 'LICENSE.txt', 'LICENSE.TXT', 'LICENSE.md', 'LICENSE.MD',
-    'COPYING', 'COPYING.txt', 'COPYING.TXT',
+    'LICENCE', 'LICENCE.txt', 'LICENCE.TXT', 'LICENCE.md', 'LICENCE.MD',
+    'COPYING', 'COPYING.txt', 'COPYING.TXT', 'COPYING.md',
     'License', 'License.txt', 'License.md',
+    'Licence', 'Licence.txt', 'Licence.md',
+    'license', 'license.txt', 'license.md',
+    'licence', 'licence.txt', 'licence.md',
 ]
 
 # scancode's catch-all for text that looks proprietary but matches no real OSS
@@ -86,7 +103,7 @@ def _detect_license_from_file(license_file_path: str) -> str:
     return None
 
 
-def resolve_license(repo_name: str) -> str:
+def resolve_license(repo_name: str) -> str | None:
     """
     Resolve the repo's top-level license for the full-repo scan.
 
@@ -97,17 +114,27 @@ def resolve_license(repo_name: str) -> str:
     baseline. Any detected BSD variant normalizes to BSD-3-Clause-Clear, matching
     main.get_license.
 
+    Returns None when the repo has NO root-level license file (none of
+    LICENSE_FILE_CANDIDATES exists) AND no config-map entry matches: the baseline
+    cannot be established, so the caller must abort rather than fabricate a default
+    (see the module docstring). The DEFAULT_LICENSE is still used when a license
+    file exists but could not be resolved (e.g. an unreliable proprietary
+    catch-all, or nothing detected).
+
     Args:
         repo_name (str): The GitHub "owner/repo", used for the config-map lookup.
 
     Returns:
-        str: The resolved SPDX license id.
+        str | None: The resolved SPDX license id, or None when no root-level
+            license file and no config-map entry establish a baseline.
     """
     detected = None
+    license_file_found = False
     for candidate in LICENSE_FILE_CANDIDATES:
         path = os.path.join(os.getcwd(), candidate)
         if os.path.exists(path):
             print(f"{LOG_PREFIX} Found license file: {candidate}")
+            license_file_found = True
             detected = _detect_license_from_file(path)
             break
 
@@ -124,12 +151,23 @@ def resolve_license(repo_name: str) -> str:
         print(f"{LOG_PREFIX} Ignoring unreliable '{detected}' detected on the "
               f"LICENSE file; falling back to config/default.")
 
-    # Config-map fallback (same suffix match main.get_license uses).
+    # Config-map fallback (same suffix match main.get_license uses). An explicit
+    # config entry is a human-declared license, so it is honored even when the
+    # repo has no LICENSE file.
     for project in config.data['projects']:
         if (repo_name.endswith(f"/{project['PROJECT_NAME']}")
                 or repo_name == project['PROJECT_NAME']):
             print(f"{LOG_PREFIX} Using license from config: {project['MARKINGS']}")
             return project['MARKINGS']
 
-    print(f"{LOG_PREFIX} Using default license: {DEFAULT_LICENSE}")
-    return DEFAULT_LICENSE
+    # A license file exists but nothing above resolved it -> keep the default so a
+    # present-but-opaque LICENSE still yields a baseline.
+    if license_file_found:
+        print(f"{LOG_PREFIX} Using default license: {DEFAULT_LICENSE}")
+        return DEFAULT_LICENSE
+
+    # No root-level license file and no config entry -> no baseline. Do NOT
+    # fabricate a default; signal the caller to abort.
+    print(f"{LOG_PREFIX} No root-level license file found and no config entry; "
+          f"cannot establish a repository license baseline.")
+    return None

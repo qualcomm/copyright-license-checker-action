@@ -296,6 +296,36 @@ but if they do declare a license it must still be compatible with the repository
 
 ---
 
+## Full-Repository Scan: No Root-Level Licence Found
+
+This applies only to the **full-repository scan** (the whole-tree audit), not the
+pull-request patch check.
+
+The full-repository scan needs a repository-level license baseline to judge each file
+against. It establishes that baseline from a **root-level license file**
+(`LICENSE` / `LICENSE.txt` / `LICENSE.md` / `COPYING`), or from an explicit entry in
+`scanner/config.py` for repositories onboarded there.
+
+If a repository has **neither** — no root-level license file **and** no configured
+license — the scan does **not** assume a default. Instead it stops with the status
+**"No Root-Level Licence Found"** and performs no per-file license or copyright
+analysis. This avoids fabricating a permissive baseline and then wrongly flagging every
+file in, for example, a GPL repository that simply never committed a `LICENSE` file.
+
+| Situation | Result |
+|---|---|
+| Root license file present | Scanned normally against the detected license |
+| No license file, but repo is in `scanner/config.py` | Scanned normally against the configured license |
+| No license file **and** not in `scanner/config.py` | ⛔ **Scan stopped** — status "No Root-Level Licence Found" |
+
+Exit behavior follows `fail_on_findings`: the stopped scan **fails the build** (non-zero
+exit) when `fail_on_findings` is `true`, and is **report-only** (exit 0) otherwise.
+
+**How to fix:** add a license file at the repository root, or onboard the repository in
+`scanner/config.py`, then re-run.
+
+---
+
 ## License Categories
 
 ### Permissive Licenses (Generally Allowed)
