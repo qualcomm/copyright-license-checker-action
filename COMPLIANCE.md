@@ -111,11 +111,12 @@ The following scenarios will **BLOCK** your build and require remediation before
 
 **Compliance Impact:** MEDIUM - New code without licenses creates ambiguity about usage rights
 
-**Full-repository scan exception — license-optional build files:** In the
-full-repository scan, build-system files (`.mk`, `.bp`) are exempt from
-both the missing-license and missing-copyright requirements (they routinely have
-neither). A present-but-incompatible license in one of them is still a blocking
-error. See "Full-Repository Scan: License-Optional Build Files" below.
+**Full-repository scan exception — license-optional files:** In the
+full-repository scan, build-system files (`.mk`, `.bp`) and certain trivial marker
+files (e.g. `__init__.py`) are exempt from both the missing-license and
+missing-copyright requirements (they routinely have neither). A
+present-but-incompatible license in one of them is still a blocking error. See
+"Full-Repository Scan: License-Optional Files" below.
 
 ---
 
@@ -265,15 +266,19 @@ This applies only to the **full-repository scan** (the whole-tree audit), not th
 
 ---
 
-## Full-Repository Scan: License-Optional Build Files
+## Full-Repository Scan: License-Optional Files
 
 This applies only to the **full-repository scan** (the whole-tree audit), not the
 pull-request patch check.
 
-Build-system files are scanned under a relaxed "license-optional" tier, because
-they routinely ship without a license header or copyright:
+Some files are scanned under a relaxed "license-optional" tier, because they
+routinely ship without a license header or copyright:
 
-**Extensions:** `.mk` (Makefiles), `.bp` (Android blueprints)
+**By extension:** `.mk` (Makefiles), `.bp` (Android blueprints)
+
+**By filename:** `__init__.py` (empty/trivial Python package markers), matched by
+basename so any `__init__.py` in any package qualifies. To exempt another file, add
+its name to `LICENSE_OPTIONAL_FILES` in `full-scan/scanner/full_repo.py`.
 
 > BitBake files (`.bb`, `.bbclass`, `.bbappend`) are **excluded from the full-repository
 > scan entirely** — they are recipe/class metadata rather than shipped source, so they are

@@ -88,3 +88,29 @@ def test_run_optional_missing_license_is_clean():
     flagged, warnings = scanner.run()
     assert flagged == {}
     assert warnings == {}
+
+
+def test_run_init_py_no_marking_is_clean():
+    # A license-optional FILE (e.g. __init__.py) with no license/copyright is
+    # allowed -- no "No license header found" / "No copyright statement found".
+    scanner = _scanner(
+        ["pkg/__init__.py"],
+        {"pkg/__init__.py": {"license": None, "copyrights": [], "scan_errors": []}},
+        optional=["pkg/__init__.py"],
+    )
+    flagged, warnings = scanner.run()
+    assert flagged == {}
+    assert warnings == {}
+
+
+def test_run_init_py_incompatible_still_blocks():
+    # ...but if it DOES carry a license, the normal rules apply: an incompatible
+    # license is still a blocking error even for a license-optional file.
+    scanner = _scanner(
+        ["pkg/__init__.py"],
+        {"pkg/__init__.py": {"license": "GPL-2.0", "copyrights": [], "scan_errors": []}},
+        optional=["pkg/__init__.py"],
+    )
+    flagged, warnings = scanner.run()
+    assert "Incompatible license: GPL-2.0" in flagged["pkg/__init__.py"]["license_issues"]
+    assert flagged["pkg/__init__.py"]["copyright_issues"] == []

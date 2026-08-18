@@ -14,9 +14,11 @@ lets a full-repo scan catch legacy files that were committed before the checker
 was enabled and therefore never appeared in any scanned PR diff.
 
 Two tiers of files are listed: fully-checked source files (SOURCE_FILE_EXTENSIONS)
-and "license-optional" build-system files (LICENSE_OPTIONAL_EXTENSIONS, e.g.
-.mk/.bp) that are scanned for an incompatible license but are not required to
-carry a license header or copyright. See FullScanner.run for the relaxed handling.
+and "license-optional" files that are scanned for an incompatible license but are
+not required to carry a license header or copyright. The license-optional tier is
+keyed two ways -- by extension (LICENSE_OPTIONAL_EXTENSIONS, e.g. .mk/.bp) and by
+filename (LICENSE_OPTIONAL_FILES, e.g. __init__.py). See FullScanner.run for the
+relaxed handling.
 """
 
 # Source file extensions the full-repo scan covers. Kept in sync with
@@ -32,6 +34,15 @@ SOURCE_FILE_EXTENSIONS = (
 # license is actually detected. See FullScanner.run.
 LICENSE_OPTIONAL_EXTENSIONS = ('.mk', '.bp')
 
+# Specific FILES treated as license-optional, matched by basename (so any
+# __init__.py in any package qualifies) OR by exact repo-relative path. Same
+# relaxed tier as LICENSE_OPTIONAL_EXTENSIONS: a MISSING license header/copyright
+# is NOT flagged, but a PRESENT incompatible license is still a blocking error and
+# an uncertain one still warns. These are trivial markers (e.g. an empty package
+# __init__.py) that routinely carry no header. To exempt another file, just add
+# its name here.
+LICENSE_OPTIONAL_FILES = ('__init__.py',)
+
 # Extensions excluded from the checks, mirroring scanner.patch.Patch's hardcoded
 # exclusions so the full-repo and PR paths skip the same non-source files.
 # NOTE: BitBake files (.bb/.bbclass/.bbappend) are excluded outright -- they are
@@ -44,7 +55,8 @@ EXCLUDED_EXTENSIONS = ('.patch', '.md', '.json', '.yml', '.bb', '.bbclass', '.bb
 class RepoScan:
     """
     Class to represent the set of files in a working tree to scan: fully-checked
-    source files plus license-optional build files (.mk/.bp).
+    source files plus license-optional files (build files by extension, e.g.
+    .mk/.bp, and specific exempt filenames, e.g. __init__.py).
 
     By default this is the git-tracked files; with include_untracked it also
     covers untracked-but-not-ignored files (see __init__).
@@ -99,14 +111,19 @@ class RepoScan:
         self.files = []
         self.ignored = []
         for path_name in listed_files:
-            # Skip files that match hardcoded exclusions.
+            # Skip files that match hardcoded exclusions. This is checked FIRST, so
+            # an excluded extension always wins over the keep rules below.
             if path_name.endswith(EXCLUDED_EXTENSIONS):
                 continue
 
-            # Keep only fully-checked source files AND relaxed license-optional
-            # build files; drop everything else. (str.endswith accepts a tuple of
-            # suffixes, so the concatenated tuple matches either tier.)
-            if not path_name.endswith(SOURCE_FILE_EXTENSIONS + LICENSE_OPTIONAL_EXTENSIONS):
+            # Keep fully-checked source files, relaxed license-optional build files,
+            # AND license-optional FILES (by basename or exact path); drop the rest.
+            # (str.endswith accepts a tuple of suffixes; the file match lets the
+            # tuple cover names whose extension is not itself a source extension.)
+            base_name = path_name.rsplit('/', 1)[-1]
+            if not (path_name.endswith(SOURCE_FILE_EXTENSIONS + LICENSE_OPTIONAL_EXTENSIONS)
+                    or path_name in LICENSE_OPTIONAL_FILES
+                    or base_name in LICENSE_OPTIONAL_FILES):
                 continue
 
             # .licenseignore exclusion: record it either way, and skip it unless
@@ -143,7 +160,10 @@ class RepoScan:
 
     def is_license_optional(self, path_name: str) -> bool:
         """
-        Report whether a path is a "license-optional" build file (.mk/.bp).
+        Report whether a path is "license-optional": a build file
+        (LICENSE_OPTIONAL_EXTENSIONS, e.g. .mk/.bp) or a specific exempt file
+        (LICENSE_OPTIONAL_FILES, e.g. __init__.py), matched by basename or exact
+        repo-relative path.
 
         These files are scanned, but a missing license header or missing
         copyright is not flagged; only a present-but-incompatible (or uncertain)
@@ -155,4 +175,7 @@ class RepoScan:
         Returns:
             bool: True if the path is in the license-optional tier.
         """
-        return path_name.endswith(LICENSE_OPTIONAL_EXTENSIONS)
+        if path_name.endswith(LICENSE_OPTIONAL_EXTENSIONS):
+            return True
+        base_name = path_name.rsplit('/', 1)[-1]
+        return path_name in LICENSE_OPTIONAL_FILES or base_name in LICENSE_OPTIONAL_FILES
