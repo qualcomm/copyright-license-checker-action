@@ -259,6 +259,14 @@ def run_full_scan(repo_name: str, repo_path: str, include_untracked: bool,
         os.chdir(repo_path)
         with contextlib.redirect_stdout(captured):
             license_id = resolve_license(repo_name)
+        if license_id is None:
+            # No root-level license file and no config entry: the shipped scan
+            # (full_scan.main) aborts here with a "No Root-Level Licence Found"
+            # status. Mirror that -- do NOT run FullScanner against a fabricated
+            # baseline -- and report the repo as unscanned.
+            if verbose and captured.getvalue().strip():
+                print(captured.getvalue().strip(), file=sys.stderr)
+            return "No Root-Level Licence Found", {}, {}, set(), set()
         if license_id in PERMISSIVE_LICENSES:
             allowed_licenses = PERMISSIVE_LICENSES
         elif license_id in COPYLEFT_LICENSES:

@@ -54,6 +54,43 @@ Usage:
 LOG_PREFIX = "< full-repo license/copyright check >"
 
 
+def report_missing_root_license(repo_name: str, fail_on_findings: bool,
+                                log_prefix: str) -> None:
+    """
+    Report that no root-level license file exists and stop the scan.
+
+    Called when resolve_license returns None -- the repo has no root-level license
+    file (LICENSE/COPYING/...) and no config-map entry, so a license baseline
+    cannot be established. Rather than fabricate a default and flag every file
+    against it, the full-repo scan is aborted here with a clear status. Exits
+    non-zero when fail_on_findings is set (so CI fails until a license is declared
+    or the repo is onboarded in config.py), otherwise exits 0 (report-only).
+
+    Args:
+        repo_name (str): The GitHub "owner/repo" that was scanned.
+        fail_on_findings (bool): Whether the missing license should fail the run.
+        log_prefix (str): The prefix to use for logging.
+    """
+    print(f"{log_prefix} ┌───────────────────────────────────────────┐")
+    print(f"{log_prefix} │        No Root-Level Licence Found          │")
+    print(f"{log_prefix} └───────────────────────────────────────────┘")
+    print(f"{log_prefix} Repository: {repo_name}")
+    print(f"{log_prefix} License analysis was stopped: the repository has no "
+          f"root-level license file")
+    print(f"{log_prefix} (LICENSE / LICENSE.txt / LICENSE.md / COPYING) and no "
+          f"configured license, so a")
+    print(f"{log_prefix} repository license baseline could not be established. No "
+          f"per-file license or")
+    print(f"{log_prefix} copyright analysis was performed.")
+    print(f"{log_prefix} To fix: add a license file at the repository root (or "
+          f"onboard the repo in")
+    print(f"{log_prefix} scanner/config.py) and re-run.")
+
+    # Respect fail_on_findings: a missing declared license blocks CI when the
+    # caller opts in, otherwise this is report-only.
+    sys.exit(1 if fail_on_findings else 0)
+
+
 def beautify_scan_output(flagged_files: dict, warning_files: dict,
                          license: str, fail_on_findings: bool,
                          log_prefix: str) -> None:
@@ -203,6 +240,12 @@ def main(repo_name: str, fail_on_findings: str, repo_path: str,
     os.chdir(repo_path)
 
     license = resolve_license(repo_name)
+    if license is None:
+        # No root-level license file and no config entry -> no baseline. Abort
+        # rather than scan every file against a fabricated default license.
+        report_missing_root_license(repo_name, fail_on_findings, LOG_PREFIX)
+        return  # report_missing_root_license exits; return keeps intent explicit.
+
     if license in PERMISSIVE_LICENSES:
         allowed_licenses = PERMISSIVE_LICENSES
     elif license in COPYLEFT_LICENSES:

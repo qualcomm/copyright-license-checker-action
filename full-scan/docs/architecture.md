@@ -63,7 +63,9 @@ this action's repo.
 ```mermaid
 flowchart TD
     A["full_scan.main()<br/>argv: repo_name, fail_on_findings"] --> B["resolve_license(repo_name)<br/>(scanner/license_resolver.py)"]
-    B --> C{"license type?"}
+    B --> N{"baseline established?<br/>(root license file OR config entry)"}
+    N -->|no → None| STOP["report_missing_root_license()<br/>'No Root-Level Licence Found'<br/>→ exit 1 if fail_on_findings else 0"]
+    N -->|yes| C{"license type?"}
     C -->|permissive| P["allowed = PERMISSIVE_LICENSES"]
     C -->|copyleft| Q["allowed = COPYLEFT_LICENSES"]
     C -->|other| R["allowed = [that license]"]
@@ -76,11 +78,17 @@ flowchart TD
     X -->|no| GREEN["print report / no issues → exit 0 (job passes)"]
 ```
 
-`resolve_license` resolves the repo's top-level license from its `LICENSE` file (falling back
-to a per-project config map, then a `BSD-3-Clause-Clear` default). It deliberately distrusts
-scancode's low-confidence `proprietary-license` catch-all on the LICENSE file — scancode
-sometimes mis-detects a standard OSS LICENSE as proprietary, which would otherwise flag every
-compliant file in the repo.
+`resolve_license` resolves the repo's top-level license from its `LICENSE` file, falling back
+to a per-project config map. It deliberately distrusts scancode's low-confidence
+`proprietary-license` catch-all on the LICENSE file — scancode sometimes mis-detects a standard
+OSS LICENSE as proprietary, which would otherwise flag every compliant file in the repo.
+
+When the repo has **no root-level license file AND no config entry**, `resolve_license` returns
+`None` rather than a `BSD-3-Clause-Clear` default: the scan cannot establish a baseline, so
+`main()` aborts via `report_missing_root_license()` with the status **"No Root-Level Licence
+Found"** and performs no per-file analysis (exit 1 under `fail_on_findings`, else 0). The
+`BSD-3-Clause-Clear` default now applies only when a license file physically exists but could
+not be resolved.
 
 ---
 
