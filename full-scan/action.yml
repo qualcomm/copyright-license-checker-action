@@ -1,3 +1,6 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+
 name: 'Run full-repository Copyright and license check'
 description: 'A GitHub Action to scan every tracked source file (and license-optional build file) in a repository for copyright and license compliance'
 inputs:
