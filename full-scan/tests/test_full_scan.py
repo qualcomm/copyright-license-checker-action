@@ -129,6 +129,18 @@ def test_report_missing_root_license_notes_empty_file(capsys):
     assert "exists but" in out and "empty" in out
 
 
+def test_report_missing_root_license_notes_undetected_file(capsys):
+    # A present-but-undetected non-empty file -> distinct status, not "no file".
+    res = LicenseResolution(None, "none", "LICENSE", 1, None)
+    with pytest.raises(SystemExit) as exc:
+        full_scan.report_missing_root_license("owner/repo", True,
+                                              full_scan.LOG_PREFIX, res)
+    assert exc.value.code == 1
+    out = capsys.readouterr().out
+    assert "License Not Conclusively Detected" in out
+    assert "could not be" in out and "No Root-Level Licence Found" not in out
+
+
 def test_missing_root_license_reports_only(monkeypatch, tmp_path):
     # Same abort, report-only: exit 0, status still printed, scan still skipped.
     monkeypatch.setattr(full_scan, "resolve_license_details",

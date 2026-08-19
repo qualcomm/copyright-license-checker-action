@@ -457,6 +457,32 @@ def test_main_comment_reason_notes_multiple_license_files(jira_env, monkeypatch)
     assert "2 license files present" in posts[0][1]
 
 
+def test_main_no_baseline_posts_scan_not_performed(jira_env, monkeypatch):
+    # When no license baseline can be established, the comment must say the scan was
+    # NOT performed -- never the misleading "No license or copyright issues found (OK)".
+    monkeypatch.setattr(js, "fetch_repo_url",
+                        lambda client, key, fid: "https://github.com/q/a")
+    none_res = LicenseResolution(None, "none", None, 0, None, ("LICENSE",))
+    _stub_scan(monkeypatch, flagged={}, warning={}, resolution=none_res)
+    posts = _capture_posts(monkeypatch)
+    result = CliRunner().invoke(js.main, ["OSSOPS-1"] + _NO_ENV)
+    assert result.exit_code == 0
+    body = posts[0][1]
+    assert "Scan not performed" in body
+    assert "NOT a pass" in body
+    assert "No license or copyright issues found" not in body   # false-OK is gone
+
+
+def test_main_no_baseline_fails_under_fail_on_findings(jira_env, monkeypatch):
+    monkeypatch.setattr(js, "fetch_repo_url",
+                        lambda client, key, fid: "https://github.com/q/a")
+    none_res = LicenseResolution(None, "none", "LICENSE", 1, None)   # undetected
+    _stub_scan(monkeypatch, flagged={}, warning={}, resolution=none_res)
+    _capture_posts(monkeypatch)
+    result = CliRunner().invoke(js.main, ["OSSOPS-1", "--fail-on-findings"] + _NO_ENV)
+    assert result.exit_code == 1
+
+
 def test_main_multi_part_posts_multiple_comments(jira_env, monkeypatch):
     # Many findings under a small per-comment limit -> posted across several comments,
     # all carrying the same visibility.
