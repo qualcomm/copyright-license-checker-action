@@ -122,3 +122,37 @@ def test_describe_resolution_texts():
     assert lr.describe_resolution(cfg) == "(from scanner/config.py entry for meta-qcom-kernel)"
     none = lr.LicenseResolution(None, "none", None, 0, None)
     assert lr.describe_resolution(none) == ""
+    none_empty = lr.LicenseResolution(None, "none", None, 0, None, ("LICENSE",))
+    assert "empty" in lr.describe_resolution(none_empty)
+
+
+# --- empty root license file is treated as absent (no fabricated default) -----
+
+def test_empty_license_file_is_none_with_no_config(tmp_path, monkeypatch):
+    # An empty / whitespace-only LICENSE has no license content -> no baseline, and
+    # the empty file is recorded so the caller can explain the abort.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "LICENSE").write_text("\n")
+    res = lr.resolve_license_details("owner/unconfigured-repo-xyz")
+    assert res.source == "none" and res.license is None
+    assert res.empty_license_files == ("LICENSE",)
+    assert res.num_license_files == 0
+    assert lr.resolve_license("owner/unconfigured-repo-xyz") is None
+
+
+def test_empty_license_file_still_honors_config(tmp_path, monkeypatch):
+    # An empty file does not block a config-map baseline.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "LICENSE").write_text("   ")
+    res = lr.resolve_license_details("qualcomm-linux/meta-qcom-kernel")
+    assert res.source == "config" and res.license == "GPL-2.0"
+
+
+def test_nonempty_unresolved_license_file_still_defaults(tmp_path, monkeypatch):
+    # A NON-empty license file scancode can't classify still defaults (the
+    # Qualcomm-BSD-mis-tagged-proprietary safety net) -- NOT an abort.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "LICENSE").write_text("some real but unrecognized license text")
+    monkeypatch.setattr(lr, "_detect_license_from_file", lambda path: None)
+    res = lr.resolve_license_details("owner/unconfigured-repo-xyz")
+    assert res.source == "default" and res.license == "BSD-3-Clause-Clear"

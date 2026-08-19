@@ -50,11 +50,15 @@ DEFAULT_LICENSE = "BSD-3-Clause-Clear"
 #   license      -- resolved SPDX id, or None when no baseline could be established
 #   source       -- "license_file" | "config" | "default" | "none"
 #   license_file -- the root file the baseline came from / that is present (or None)
-#   num_license_files -- how many root-level license files exist (for the "N present" note)
+#   num_license_files -- how many NON-EMPTY root-level license files exist (for the "N present" note)
 #   config_project    -- the config.py PROJECT_NAME matched (when source == "config")
+#   empty_license_files -- root license files that exist but are empty/whitespace-only
+#                          (treated as absent); named so the abort can explain itself
 LicenseResolution = namedtuple(
     "LicenseResolution",
-    ["license", "source", "license_file", "num_license_files", "config_project"],
+    ["license", "source", "license_file", "num_license_files", "config_project",
+     "empty_license_files"],
+    defaults=((),),          # empty_license_files defaults to () -> old 5-arg calls still work
 )
 
 # Root-level license-file candidates. Superset of the list main.get_license
@@ -116,6 +120,21 @@ def _detect_license_from_file(license_file_path: str) -> str:
     return None
 
 
+def _has_license_text(path: str) -> bool:
+    """
+    Whether a candidate license file has any actual (non-whitespace) content.
+
+    An empty or whitespace-only license file has no license to stand on, so it is
+    treated as absent (see resolve_license_details) rather than fabricating a
+    default from nothing.
+    """
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as handle:
+            return bool(handle.read().strip())
+    except OSError:
+        return False
+
+
 def resolve_license_details(repo_name: str) -> LicenseResolution:
     """
     Resolve the repo's top-level license AND explain where the answer came from.
@@ -142,8 +161,16 @@ def resolve_license_details(repo_name: str) -> LicenseResolution:
     Returns:
         LicenseResolution: license + source metadata (see the namedtuple).
     """
-    present = [c for c in LICENSE_FILE_CANDIDATES
-               if os.path.exists(os.path.join(os.getcwd(), c))]
+    # An empty / whitespace-only license file has no license content, so treat it as
+    # absent: only NON-empty candidates count as usable license files. This stops an
+    # empty LICENSE from fabricating the default baseline (while a NON-empty file that
+    # scancode merely can't classify still falls to the default -- see below).
+    present, empty_present = [], []
+    for candidate in LICENSE_FILE_CANDIDATES:
+        path = os.path.join(os.getcwd(), candidate)
+        if not os.path.exists(path):
+            continue
+        (present if _has_license_text(path) else empty_present).append(candidate)
     num_files = len(present)
     license_file = present[0] if present else None
 
@@ -186,11 +213,16 @@ def resolve_license_details(repo_name: str) -> LicenseResolution:
         return LicenseResolution(DEFAULT_LICENSE, "default", license_file,
                                  num_files, None)
 
-    # No root-level license file and no config entry -> no baseline. Do NOT
-    # fabricate a default; signal the caller to abort.
-    print(f"{LOG_PREFIX} No root-level license file found and no config entry; "
-          f"cannot establish a repository license baseline.")
-    return LicenseResolution(None, "none", None, 0, None)
+    # No usable root-level license file and no config entry -> no baseline. Do NOT
+    # fabricate a default; signal the caller to abort. empty_present is carried so the
+    # abort can explain a repo that DOES have a license file which is merely empty.
+    if empty_present:
+        print(f"{LOG_PREFIX} Root-level license file(s) {', '.join(empty_present)} "
+              f"are empty; no license content and no config entry to establish a baseline.")
+    else:
+        print(f"{LOG_PREFIX} No root-level license file found and no config entry; "
+              f"cannot establish a repository license baseline.")
+    return LicenseResolution(None, "none", None, 0, None, tuple(empty_present))
 
 
 def resolve_license(repo_name: str) -> str | None:
@@ -215,4 +247,7 @@ def describe_resolution(res: LicenseResolution) -> str:
         return f"(from scanner/config.py entry for {res.config_project})"
     if res.source == "default":
         return "(license file present but license not conclusively detected; using default)"
+    if res.source == "none" and res.empty_license_files:
+        return ("(a root-level license file is present but empty; "
+                "no license text to scan)")
     return ""

@@ -116,6 +116,19 @@ def test_missing_root_license_blocks_when_failon(monkeypatch, tmp_path):
     assert "No Root-Level Licence Found" in result.output
 
 
+def test_report_missing_root_license_notes_empty_file(capsys):
+    # When the "no baseline" was caused by an empty (not absent) license file, the
+    # abort message says so, rather than the misleading "has no root-level file".
+    res = LicenseResolution(None, "none", None, 0, None, ("LICENSE",))
+    with pytest.raises(SystemExit) as exc:
+        full_scan.report_missing_root_license("owner/repo", False,
+                                              full_scan.LOG_PREFIX, res)
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert "No Root-Level Licence Found" in out
+    assert "exists but" in out and "empty" in out
+
+
 def test_missing_root_license_reports_only(monkeypatch, tmp_path):
     # Same abort, report-only: exit 0, status still printed, scan still skipped.
     monkeypatch.setattr(full_scan, "resolve_license_details",
