@@ -262,46 +262,74 @@ def test_parse_repo_url_invalid(url):
     assert js.parse_repo_url(url) is None
 
 
-# --- build_comment -----------------------------------------------------------
+# --- build_comment_parts -----------------------------------------------------
 
-def test_build_comment_clean():
-    body = js.build_comment("q/a", "BSD-3-Clause-Clear", {}, {},
-                            scanned={"a.c", "b.py"}, ignored=set())
+def test_build_comment_parts_clean():
+    parts = js.build_comment_parts("q/a", "BSD-3-Clause-Clear", {}, {},
+                                   scanned={"a.c", "b.py"}, ignored=set())
+    assert len(parts) == 1
+    body = parts[0]
     assert "*Blocking files:* 0" in body
     assert "*Files scanned:* 2" in body
     assert "No license or copyright issues found." in body
+    assert "part 1 of" not in body                  # no part label for a single comment
 
 
-def test_build_comment_sections_and_counts():
+def test_build_comment_parts_renders_table():
     flagged = {"src/x.c": {"license_issues": ["Incompatible license: GPL-2.0"],
                            "copyright_issues": ["No copyright statement found"]}}
     warning = {"src/y.c": {"license_issues": [
         "Uncertain license, review manually: LicenseRef-scancode-unknown"],
         "copyright_issues": []}}
-    body = js.build_comment("q/a", "BSD-3-Clause-Clear", flagged, warning,
-                            scanned={"src/x.c", "src/y.c"}, ignored={"vendor/z.c"})
+    parts = js.build_comment_parts("q/a", "BSD-3-Clause-Clear", flagged, warning,
+                                   scanned={"src/x.c", "src/y.c"}, ignored={"vendor/z.c"})
+    assert len(parts) == 1
+    body = parts[0]
     assert "*Blocking files:* 1" in body
     assert "*Warning files:* 1" in body
     assert "*Skipped by .licenseignore:* 1" in body
     assert "h4. Blocking issues (1)" in body
     assert "h4. Warnings (1)" in body
-    assert "{{src/x.c}}" in body
-    assert "Incompatible license: GPL-2.0" in body
-    assert "No copyright statement found" in body
+    # Table header + one row per issue, Type derived structurally.
+    assert "||File||Type||Issue||" in body
+    assert "|{{src/x.c}}|License|Incompatible license: GPL-2.0|" in body
+    assert "|{{src/x.c}}|Copyright|No copyright statement found|" in body
 
 
-def test_build_comment_truncates_to_limit():
-    # Many blocking files, each with an issue, forced under a tiny limit.
+def test_build_comment_parts_continues_into_multiple_comments():
+    # Many blocking files under a small limit -> spread across parts, none dropped
+    # (well under the cap), each part valid and labelled.
     flagged = {f"dir/file_{i:03d}.c": {
         "license_issues": ["Incompatible license: GPL-2.0"],
-        "copyright_issues": ["No copyright statement found"]} for i in range(200)}
-    limit = 1500
-    body = js.build_comment("q/a", "BSD-3-Clause-Clear", flagged, {},
-                            scanned=set(flagged), ignored=set(), limit=limit)
-    assert len(body) <= limit
-    assert "truncated to fit Jira's comment size limit" in body
-    assert "*Blocking files:* 200" in body          # summary count stays intact
-    assert "more file(s) omitted" in body
+        "copyright_issues": []} for i in range(60)}
+    limit = 1200
+    parts = js.build_comment_parts("q/a", "BSD-3-Clause-Clear", flagged, {},
+                                   scanned=set(flagged), ignored=set(), limit=limit)
+    assert len(parts) > 1
+    assert len(parts) <= js.MAX_COMMENT_PARTS
+    assert all(len(p) <= limit for p in parts)
+    for i, p in enumerate(parts, 1):
+        assert f"*(part {i} of {len(parts)})*" in p
+        assert "||File||Type||Issue||" in p          # each part re-emits the header
+    # 60 rows fit within the cap -> nothing omitted.
+    all_text = "\n".join(parts)
+    assert "omitted" not in all_text
+    assert all_text.count("|License|Incompatible license: GPL-2.0|") == 60
+
+
+def test_build_comment_parts_caps_and_truncates_remainder():
+    # Enough findings to exceed MAX_COMMENT_PARTS at a tiny limit -> last part carries
+    # the truncation note; the comment count is bounded.
+    flagged = {f"dir/file_{i:03d}.c": {
+        "license_issues": ["Incompatible license: GPL-2.0"],
+        "copyright_issues": ["No copyright statement found"]} for i in range(400)}
+    limit = 1200
+    parts = js.build_comment_parts("q/a", "BSD-3-Clause-Clear", flagged, {},
+                                   scanned=set(flagged), ignored=set(), limit=limit)
+    assert len(parts) == js.MAX_COMMENT_PARTS
+    assert all(len(p) <= limit for p in parts)
+    assert "*Blocking files:* 400" in parts[0]       # summary count stays intact
+    assert "more issue(s) omitted" in parts[-1]
 
 
 # --- build_error_comment -----------------------------------------------------
@@ -389,6 +417,22 @@ def test_main_findings_posts_comment_exit_0(jira_env, monkeypatch):
     assert len(posts) == 1
     assert "Incompatible license: GPL-2.0" in posts[0][1]
     assert posts[0][2] is None                      # public by default
+
+
+def test_main_multi_part_posts_multiple_comments(jira_env, monkeypatch):
+    # Many findings under a small per-comment limit -> posted across several comments,
+    # all carrying the same visibility.
+    monkeypatch.setattr(js, "fetch_repo_url",
+                        lambda client, key, fid: "https://github.com/q/a")
+    flagged = {f"f{i:03d}.c": {"license_issues": ["Incompatible license: GPL-2.0"],
+                               "copyright_issues": []} for i in range(60)}
+    _stub_scan(monkeypatch, flagged=flagged, warning={})
+    posts = _capture_posts(monkeypatch)
+    result = CliRunner().invoke(
+        js.main, ["OSSOPS-1", "--comment-limit", "1200"] + _NO_ENV)
+    assert result.exit_code == 0
+    assert len(posts) > 1                            # spread across comments
+    assert all(p[2] is None for p in posts)          # consistent visibility (public)
 
 
 def test_main_comment_visibility_group_flag_threads_through(jira_env, monkeypatch):

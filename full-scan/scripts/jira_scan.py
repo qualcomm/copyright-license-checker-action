@@ -12,8 +12,10 @@ repository link (e.g. https://github.com/qualcomm/time-services), this tool:
   3. Shallow-clones the repo and runs the full-repo scan against it (in-process, the
      same code path as full_scan.py -- see compare_tools.run_full_scan).
   4. Collects the findings/warnings.
-  5. Posts the results back onto the ticket as a single comment (capped to Jira's
-     comment size limit). Validation/clone/scan failures are posted as an error comment.
+  5. Posts the results back onto the ticket as a `File | Type | Issue` table. If the
+     findings exceed Jira's comment size limit they continue across more comments
+     ("part N of M"; bounded, then truncated). Validation/clone/scan failures are
+     posted as an error comment.
 
 It is a standalone operator/automation entry point -- NOT part of the GitHub Action and
 not a CI gate. It reuses the existing clone + scan helpers and the public `jira` PyPI
@@ -92,8 +94,13 @@ DEFAULT_CREDS_FILE = "~/.jira-creds"
 DEFAULT_COMMENT_LIMIT = 16384
 
 # Chars reserved when deciding how much per-file detail fits before the truncation
-# note is appended (the note itself is well under this).
+# note (or a "part N of M" label) is appended -- both are well under this.
 _TRUNCATE_RESERVE = 220
+
+# Overflow that does not fit one comment continues into more comments (each capped
+# at the size limit). This bounds how many, so a pathological repo cannot post an
+# unbounded stream of comments; findings past the cap are truncated with a note.
+MAX_COMMENT_PARTS = 5
 
 
 class JiraError(Exception):
@@ -430,24 +437,45 @@ def parse_repo_url(url: str):
 
 # --- Comment rendering -------------------------------------------------------
 
-def _file_block(path: str, entry: dict) -> str:
-    """Render one file's issues as Jira wiki-markup bullets (monospace filename)."""
-    lines = ["* {{" + path + "}}"]
-    for issue in entry.get("license_issues", []):
-        lines.append("** " + issue)
-    for issue in entry.get("copyright_issues", []):
-        lines.append("** " + issue)
-    return "\n".join(lines)
+# Jira wiki-markup table header for the findings tables (File | Type | Issue).
+_TABLE_HEADER = "||File||Type||Issue||"
 
 
-def build_comment(repo_name: str, license_id: str, flagged: dict, warning: dict,
-                  scanned, ignored, limit: int = DEFAULT_COMMENT_LIMIT) -> str:
+def _esc_cell(text: str) -> str:
+    """Escape a value for a Jira table cell: a literal '|' would end the cell."""
+    return text.replace("|", "&#124;")
+
+
+def _finding_rows(path: str, entry: dict) -> list:
     """
-    Render the scan result as a Jira comment body, capped to `limit` characters.
+    Render one file's issues as Jira table rows: |{{path}}|Type|Issue|.
 
-    The summary (counts) is always kept intact. Per-file detail is appended greedily
-    and truncated -- with an explicit note of how many files were omitted -- if it
-    would exceed the limit, so the body never exceeds Jira's comment size cap.
+    Type is derived structurally from which list the issue came from (License vs
+    Copyright), not by parsing the message. One row per issue.
+    """
+    rows = []
+    cell_path = "{{" + _esc_cell(path) + "}}"
+    for issue in entry.get("license_issues", []):
+        rows.append(f"|{cell_path}|License|{_esc_cell(issue)}|")
+    for issue in entry.get("copyright_issues", []):
+        rows.append(f"|{cell_path}|Copyright|{_esc_cell(issue)}|")
+    return rows
+
+
+def build_comment_parts(repo_name: str, license_id: str, flagged: dict, warning: dict,
+                        scanned, ignored,
+                        limit: int = DEFAULT_COMMENT_LIMIT) -> list:
+    """
+    Render the scan result as one or more Jira comment bodies, each <= `limit`.
+
+    The summary (counts) is always kept intact at the top of the first part.
+    Findings render as `File | Type | Issue` tables (one row per issue). Rows are
+    packed greedily; when a part fills, the rest continue in the next part (the
+    section heading + table header are re-emitted so every part is valid on its
+    own). At most MAX_COMMENT_PARTS parts are produced -- any remainder is truncated
+    with an explicit "N more issue(s) omitted" note -- so a body never exceeds the
+    cap and the comment count stays bounded. Parts are labelled "part N of M" when
+    there is more than one.
 
     Args:
         repo_name (str): "owner/repo".
@@ -457,10 +485,10 @@ def build_comment(repo_name: str, license_id: str, flagged: dict, warning: dict,
         warning (dict): Non-blocking findings, same shape.
         scanned: The set/list of scanned file paths.
         ignored: The set/list of files skipped by .licenseignore.
-        limit (int): Maximum comment length.
+        limit (int): Maximum length of each comment body.
 
     Returns:
-        str: The Jira wiki-markup comment body (len <= limit).
+        list[str]: One or more Jira wiki-markup comment bodies (each len <= limit).
     """
     blocking_n = len(flagged)
     warning_n = len(warning)
@@ -478,38 +506,61 @@ def build_comment(repo_name: str, license_id: str, flagged: dict, warning: dict,
     summary = "\n".join(summary_lines)
 
     if not flagged and not warning:
-        return summary + "\n\nNo license or copyright issues found. (OK)"
+        return [summary + "\n\nNo license or copyright issues found. (OK)"]
 
+    # Each section is (prefix, rows): the prefix (heading + table header) is
+    # re-emitted whenever the section continues into a new part.
     sections = []
     if flagged:
-        sections.append((f"h4. Blocking issues ({blocking_n})", flagged))
+        rows = [r for path in sorted(flagged) for r in _finding_rows(path, flagged[path])]
+        sections.append((f"h4. Blocking issues ({blocking_n})\n" + _TABLE_HEADER, rows))
     if warning:
-        sections.append((f"h4. Warnings ({warning_n})", warning))
+        rows = [r for path in sorted(warning) for r in _finding_rows(path, warning[path])]
+        sections.append((f"h4. Warnings ({warning_n})\n" + _TABLE_HEADER, rows))
+    total_rows = sum(len(rows) for _, rows in sections)
 
-    body = summary
-    included = 0
+    def _fits(current: str, extra: int) -> bool:
+        # Leave _TRUNCATE_RESERVE headroom for a possible truncation note and the
+        # "part N of M" label prepended after packing.
+        return len(current) + extra + _TRUNCATE_RESERVE <= limit
+
+    parts = []
+    current = summary
+    emitted = 0
     truncated = False
-    for title, files in sections:
+    for prefix, rows in sections:
         if truncated:
             break
-        candidate = body + "\n\n" + title
-        if len(candidate) + _TRUNCATE_RESERVE > limit:
-            truncated = True
-            break
-        body = candidate
-        for path in sorted(files):
-            block = "\n" + _file_block(path, files[path])
-            if len(body) + len(block) + _TRUNCATE_RESERVE > limit:
+        opener = ("\n\n" if current else "") + prefix
+        if not _fits(current, len(opener)) and len(parts) + 1 < MAX_COMMENT_PARTS:
+            parts.append(current)
+            current = prefix
+        else:
+            current += opener
+        for row in rows:
+            add = "\n" + row
+            if _fits(current, len(add)):
+                current += add
+                emitted += 1
+            elif len(parts) + 1 < MAX_COMMENT_PARTS:
+                parts.append(current)
+                current = prefix + "\n" + row   # new part re-opens the section
+                emitted += 1
+            else:
                 truncated = True
                 break
-            body += block
-            included += 1
 
     if truncated:
-        omitted = (blocking_n + warning_n) - included
-        body += (f"\n\n(Detail truncated to fit Jira's comment size limit; "
-                 f"{omitted} more file(s) omitted. See the counts above.)")
-    return body
+        omitted = total_rows - emitted
+        current += (f"\n\n(Detail truncated to fit Jira's comment size limit; "
+                    f"{omitted} more issue(s) omitted. See the counts above.)")
+    parts.append(current)
+
+    total_parts = len(parts)
+    if total_parts > 1:
+        parts = [f"*(part {i} of {total_parts})*\n\n" + body
+                 for i, body in enumerate(parts, 1)]
+    return parts
 
 
 def build_error_comment(category: str, message: str) -> str:
@@ -541,24 +592,36 @@ def build_error_comment(category: str, message: str) -> str:
 
 # --- Orchestration -----------------------------------------------------------
 
-def _post_or_print(client: JIRA, issue_key: str, body: str, dry_run: bool,
+def _post_or_print(client: JIRA, issue_key: str, bodies, dry_run: bool,
                    visibility: dict = None) -> None:
-    """Post the comment to the ticket, or (under --dry-run) print it and post nothing."""
+    """
+    Post the comment(s) to the ticket, or (under --dry-run) print and post nothing.
+
+    `bodies` may be a single body or a list of parts (build_comment_parts); each
+    part is posted as its own comment with the SAME visibility.
+    """
+    if isinstance(bodies, str):
+        bodies = [bodies]
+    n = len(bodies)
     if dry_run:
         vis = (f" [visibility: {visibility['type']}={visibility['value']}]"
                if visibility else "")
-        click.echo(f"--- DRY RUN: comment for {issue_key}{vis} (not posted) ---")
-        click.echo(body)
+        for i, body in enumerate(bodies, 1):
+            label = f" part {i}/{n}" if n > 1 else ""
+            click.echo(f"--- DRY RUN: comment for {issue_key}{vis}{label} (not posted) ---")
+            click.echo(body)
         return
-    try:
-        post_comment(client, issue_key, body, visibility)
-    except JiraError as exc:
-        click.echo(f"ERROR: failed to post comment to {issue_key}: {exc}", err=True)
-        click.echo(body, err=True)
-        sys.exit(3)
+    for body in bodies:
+        try:
+            post_comment(client, issue_key, body, visibility)
+        except JiraError as exc:
+            click.echo(f"ERROR: failed to post comment to {issue_key}: {exc}", err=True)
+            click.echo(body, err=True)
+            sys.exit(3)
     where = (f" (restricted to {visibility['type']} '{visibility['value']}')"
              if visibility else "")
-    click.echo(f"Posted scan results to {issue_key}{where}.")
+    count = f" in {n} comments" if n > 1 else ""
+    click.echo(f"Posted scan results to {issue_key}{count}{where}.")
 
 
 def _finish_error(client: JIRA, issue_key: str, category: str, message: str,
@@ -593,9 +656,10 @@ def _finish_error(client: JIRA, issue_key: str, category: str, message: str,
 @click.option("--include-licenseignore", is_flag=True, default=False, show_default=True,
               help="Also scan files matched by the repo's .licenseignore.")
 @click.option("--comment-limit", default=0, type=int,
-              help="Maximum Jira comment length before detail is truncated. 0 (the "
-                   "default) uses MAX_COMMENT_LENGTH from the environment, else "
-                   f"{DEFAULT_COMMENT_LIMIT}.")
+              help="Maximum length of EACH Jira comment. Findings that do not fit "
+                   f"continue into more comments (up to {MAX_COMMENT_PARTS}), then "
+                   "truncate. 0 (the default) uses MAX_COMMENT_LENGTH from the "
+                   f"environment, else {DEFAULT_COMMENT_LIMIT}.")
 @click.option("--comment-visibility-role", default=None,
               help="Restrict the posted comment to a Jira PROJECT ROLE (e.g. "
                    "'Developers'), via the comment's visibility field. Value is the "
@@ -697,9 +761,9 @@ def main(issue_key: str, url_field: str, env_file: str, jira_url: str, creds_fil
         # qnaro; fall back to the built-in default.
         limit = comment_limit or int(
             os.environ.get("MAX_COMMENT_LENGTH", DEFAULT_COMMENT_LIMIT))
-        comment = build_comment(repo_name, license_id, flagged, warning,
-                                scanned, ignored, limit)
-        _post_or_print(client, issue_key, comment, dry_run, visibility)
+        comment_parts = build_comment_parts(repo_name, license_id, flagged, warning,
+                                             scanned, ignored, limit)
+        _post_or_print(client, issue_key, comment_parts, dry_run, visibility)
 
     if fail_on_findings and flagged:
         sys.exit(1)
