@@ -296,40 +296,40 @@ but if they do declare a license it must still be compatible with the repository
 
 ---
 
-## Full-Repository Scan: No Root-Level Licence Found
+## Full-Repository Scan: when the license baseline can't be established
 
 This applies only to the **full-repository scan** (the whole-tree audit), not the
 pull-request patch check.
 
 The full-repository scan needs a repository-level license baseline to judge each file
-against. It establishes that baseline from a **root-level license file**
-(`LICENSE` / `LICENSE.txt` / `LICENSE.md` / `COPYING`), or from an explicit entry in
-`scanner/config.py` for repositories onboarded there.
+against, and it establishes that baseline **only** from real evidence — it does **not**
+fabricate a default:
+1. a license detected by scancode in a **root-level license file** (`LICENSE` /
+   `LICENSE.txt` / `LICENSE.md` / `COPYING`, incl. British/lowercase spellings), or
+2. a genuine **BSD-3-Clause** license recognized from the file's text when scancode
+   mis-detects it (scancode 32.2.1 mislabels the standard year-less Qualcomm BSD header
+   as proprietary), or
+3. an explicit entry in **`scanner/config.py`** for repositories onboarded there.
 
-If a repository has **neither** — no root-level license file **and** no configured
-license — the scan does **not** assume a default. Instead it stops with the status
-**"No Root-Level Licence Found"** and performs no per-file license or copyright
-analysis. This avoids fabricating a permissive baseline and then wrongly flagging every
-file in, for example, a GPL repository that simply never committed a `LICENSE` file.
-
-An **empty / whitespace-only** license file counts as *no license* (it declares nothing),
-so it triggers the same stop — the report clarifies that a file exists but is empty. A
-**non-empty** license file that scancode merely can't classify is different: it keeps the
-`BSD-3-Clause-Clear` default (a safety net for genuine BSD files that scancode mis-detects),
-so it is still scanned.
+If none of those establish a baseline, the scan **stops** and performs no per-file
+analysis — it never assumes a permissive default. The stop reports one of:
 
 | Situation | Result |
 |---|---|
-| Root license file present, license detected | Scanned normally against the detected license |
-| Non-empty license file, not conclusively detected | Scanned against the `BSD-3-Clause-Clear` default |
-| No license file, but repo is in `scanner/config.py` | Scanned normally against the configured license |
-| Empty license file (or none) **and** not in `scanner/config.py` | ⛔ **Scan stopped** — status "No Root-Level Licence Found" |
+| License detected (scancode or BSD-3 text) | ✅ Scanned against the detected license |
+| No license file, but repo is in `scanner/config.py` | ✅ Scanned against the configured license |
+| No root-level license file (and not in config) | ⛔ **Stopped** — "No Root-Level Licence Found" |
+| Root license file present but **empty** | ⛔ **Stopped** — "No Root-Level Licence Found" (empty) |
+| Root license file present but license **not identifiable** | ⛔ **Stopped** — "License Not Conclusively Detected" |
 
-Exit behavior follows `fail_on_findings`: the stopped scan **fails the build** (non-zero
-exit) when `fail_on_findings` is `true`, and is **report-only** (exit 0) otherwise.
+A stop is **not** a pass: no files were analyzed. In the Jira runner it posts a clear
+"scan not performed" comment, never "No issues found (OK)". Exit behavior follows
+`fail_on_findings`: **fails the build** (non-zero) when `true`, **report-only** (exit 0)
+otherwise.
 
-**How to fix:** add a license file at the repository root, or onboard the repository in
-`scanner/config.py`, then re-run.
+**How to fix:** please fix this issue (add or complete a recognized license file at the
+repository root, or onboard the repository in `scanner/config.py`) **or reach out to the
+ossops.support team for help**, then re-run.
 
 ---
 

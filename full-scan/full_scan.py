@@ -70,33 +70,49 @@ def report_missing_root_license(repo_name: str, fail_on_findings: bool,
         repo_name (str): The GitHub "owner/repo" that was scanned.
         fail_on_findings (bool): Whether the missing license should fail the run.
         log_prefix (str): The prefix to use for logging.
-        resolution: The LicenseResolution (optional); when it lists empty license
-            files, the report clarifies that a file exists but is empty.
+        resolution: The LicenseResolution (optional). Its fields select which of the
+            three no-baseline cases is reported: a present-but-undetected file, a
+            present-but-empty file, or no file at all.
     """
-    print(f"{log_prefix} ┌───────────────────────────────────────────┐")
-    print(f"{log_prefix} │        No Root-Level Licence Found          │")
-    print(f"{log_prefix} └───────────────────────────────────────────┘")
-    print(f"{log_prefix} Repository: {repo_name}")
+    license_file = getattr(resolution, "license_file", None)
     empty = getattr(resolution, "empty_license_files", ()) or ()
-    if empty:
-        print(f"{log_prefix} A root-level license file ({', '.join(empty)}) exists but "
-              f"is empty, so it")
-        print(f"{log_prefix} declares no license. With no configured license either, a "
-              f"repository license")
-        print(f"{log_prefix} baseline could not be established. No per-file license or "
-              f"copyright analysis")
-        print(f"{log_prefix} was performed.")
+    if license_file:
+        status = "License Not Conclusively Detected"
+        body = [
+            f"A root-level license file ({license_file}) is present, but its license "
+            f"could not be",
+            "identified (scancode did not recognize it, it is not BSD-3-Clause, and the "
+            "repo is not",
+            "configured in scanner/config.py). No repository license baseline could be "
+            "established,",
+            "so no per-file license or copyright analysis was performed.",
+        ]
+    elif empty:
+        status = "No Root-Level Licence Found"
+        body = [
+            f"A root-level license file ({', '.join(empty)}) exists but is empty, so it "
+            f"declares no",
+            "license. With no configured license either, a repository license baseline "
+            "could not be",
+            "established. No per-file license or copyright analysis was performed.",
+        ]
     else:
-        print(f"{log_prefix} License analysis was stopped: the repository has no "
-              f"root-level license file")
-        print(f"{log_prefix} (LICENSE / LICENSE.txt / LICENSE.md / COPYING) and no "
-              f"configured license, so a")
-        print(f"{log_prefix} repository license baseline could not be established. No "
-              f"per-file license or")
-        print(f"{log_prefix} copyright analysis was performed.")
-    print(f"{log_prefix} To fix: add a license file at the repository root (or "
-          f"onboard the repo in")
-    print(f"{log_prefix} scanner/config.py) and re-run.")
+        status = "No Root-Level Licence Found"
+        body = [
+            "License analysis was stopped: the repository has no root-level license file",
+            "(LICENSE / LICENSE.txt / LICENSE.md / COPYING) and no configured license, so a",
+            "repository license baseline could not be established. No per-file license or",
+            "copyright analysis was performed.",
+        ]
+
+    print(f"{log_prefix} ┌─────────────────────────────────────────────┐")
+    print(f"{log_prefix} │ {status}")
+    print(f"{log_prefix} └─────────────────────────────────────────────┘")
+    print(f"{log_prefix} Repository: {repo_name}")
+    for line in body:
+        print(f"{log_prefix} {line}")
+    print(f"{log_prefix} Please fix this issue OR reach out to ossops.support "
+          f"team for help.")
 
     # Respect fail_on_findings: a missing declared license blocks CI when the
     # caller opts in, otherwise this is report-only.

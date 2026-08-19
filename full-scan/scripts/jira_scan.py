@@ -640,6 +640,32 @@ def build_error_comment(category: str, message: str) -> str:
     ])
 
 
+def build_no_baseline_comment(repo_name: str, resolution) -> str:
+    """
+    Render the comment for when no license baseline could be established.
+
+    This is NOT a clean scan: no files were analyzed. Rendering it as a normal
+    (empty) findings report would say "No issues found (OK)" and falsely imply the
+    repo passed, so this states plainly that the scan was not performed and why.
+    """
+    status = ("License Not Conclusively Detected" if resolution.license_file
+              else "No Root-Level Licence Found")
+    reason = describe_resolution(resolution)
+    detail = ("No repository license baseline could be established"
+              + (f" {reason}" if reason else "") + ", so *no files were analyzed*.")
+    return "\n".join([
+        "h3. Full-repository license/copyright scan",
+        "",
+        "*Repository:* {{" + repo_name + "}}",
+        f"*Status:* {status}",
+        "",
+        "{color:#d04437}*Scan not performed.*{color} " + detail,
+        "This is NOT a pass -- the repository was not validated.",
+        "",
+        "Please fix this issue OR reach out to ossops.support team for help.",
+    ])
+
+
 # --- Orchestration -----------------------------------------------------------
 
 def _post_or_print(client: JIRA, issue_key: str, bodies, dry_run: bool,
@@ -806,6 +832,14 @@ def main(issue_key: str, url_field: str, env_file: str, jira_url: str, creds_fil
                           f"full_scan failed for {repo_name}: {exc}", dry_run,
                           visibility)
             sys.exit(1)
+
+        # No license baseline -> the scan was NOT performed. Post a distinct
+        # "scan not performed" comment (never a misleading "no issues found (OK)").
+        if resolution.source == "none":
+            _post_or_print(client, issue_key,
+                           build_no_baseline_comment(repo_name, resolution),
+                           dry_run, visibility)
+            sys.exit(1 if fail_on_findings else 0)
 
         # Explain how the license was resolved, linking the source file when the
         # baseline came from one (must be built while the clone still exists).
