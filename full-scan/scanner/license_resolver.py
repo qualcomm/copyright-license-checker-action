@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import tempfile
+from collections import namedtuple
 
 import scanner.config as config
 from scanner.full_scanner import confident_license_expression
@@ -43,6 +44,18 @@ there is tracked as a patch-scan issue for that owner, not fixed in this repo.
 LOG_PREFIX = "< full-repo license/copyright check >"
 
 DEFAULT_LICENSE = "BSD-3-Clause-Clear"
+
+# Structured result of resolving a repo's baseline license, so callers can explain
+# WHY a license was chosen (not just what).
+#   license      -- resolved SPDX id, or None when no baseline could be established
+#   source       -- "license_file" | "config" | "default" | "none"
+#   license_file -- the root file the baseline came from / that is present (or None)
+#   num_license_files -- how many root-level license files exist (for the "N present" note)
+#   config_project    -- the config.py PROJECT_NAME matched (when source == "config")
+LicenseResolution = namedtuple(
+    "LicenseResolution",
+    ["license", "source", "license_file", "num_license_files", "config_project"],
+)
 
 # Root-level license-file candidates. Superset of the list main.get_license
 # checks: because resolution now ABORTS ("No Root-Level Licence Found") when no
@@ -103,9 +116,9 @@ def _detect_license_from_file(license_file_path: str) -> str:
     return None
 
 
-def resolve_license(repo_name: str) -> str | None:
+def resolve_license_details(repo_name: str) -> LicenseResolution:
     """
-    Resolve the repo's top-level license for the full-repo scan.
+    Resolve the repo's top-level license AND explain where the answer came from.
 
     Order: LICENSE-file detection -> config map -> default (BSD-3-Clause-Clear).
     A LICENSE-file detection that is only scancode's unreliable proprietary
@@ -114,40 +127,45 @@ def resolve_license(repo_name: str) -> str | None:
     baseline. Any detected BSD variant normalizes to BSD-3-Clause-Clear, matching
     main.get_license.
 
-    Returns None when the repo has NO root-level license file (none of
-    LICENSE_FILE_CANDIDATES exists) AND no config-map entry matches: the baseline
-    cannot be established, so the caller must abort rather than fabricate a default
-    (see the module docstring). The DEFAULT_LICENSE is still used when a license
-    file exists but could not be resolved (e.g. an unreliable proprietary
-    catch-all, or nothing detected).
+    The result's `license` is None (source "none") when the repo has NO root-level
+    license file AND no config-map entry: the baseline cannot be established, so the
+    caller must abort rather than fabricate a default. The DEFAULT_LICENSE is still
+    used (source "default") when a license file exists but could not be resolved.
+
+    All root-level candidates are inspected (not just the first) so `num_license_files`
+    reports how many exist; the first by LICENSE_FILE_CANDIDATES priority is the one
+    used for detection.
 
     Args:
         repo_name (str): The GitHub "owner/repo", used for the config-map lookup.
 
     Returns:
-        str | None: The resolved SPDX license id, or None when no root-level
-            license file and no config-map entry establish a baseline.
+        LicenseResolution: license + source metadata (see the namedtuple).
     """
+    present = [c for c in LICENSE_FILE_CANDIDATES
+               if os.path.exists(os.path.join(os.getcwd(), c))]
+    num_files = len(present)
+    license_file = present[0] if present else None
+
     detected = None
-    license_file_found = False
-    for candidate in LICENSE_FILE_CANDIDATES:
-        path = os.path.join(os.getcwd(), candidate)
-        if os.path.exists(path):
-            print(f"{LOG_PREFIX} Found license file: {candidate}")
-            license_file_found = True
-            detected = _detect_license_from_file(path)
-            break
+    if license_file:
+        print(f"{LOG_PREFIX} Found license file: {license_file}"
+              + (f" ({num_files} present)" if num_files > 1 else ""))
+        detected = _detect_license_from_file(os.path.join(os.getcwd(), license_file))
 
     if detected:
-        # Any BSD variant -> the org default (mirrors main.get_license).
+        # Any BSD variant -> the org default (mirrors main.get_license). Still
+        # attributed to the license file, which is what said BSD.
         if "bsd" in detected.lower():
             print(f"{LOG_PREFIX} License contains 'bsd', using default: {DEFAULT_LICENSE}")
-            return DEFAULT_LICENSE
+            return LicenseResolution(DEFAULT_LICENSE, "license_file", license_file,
+                                     num_files, None)
         # Trust the detection unless it is only scancode's unreliable proprietary
         # catch-all; in that case fall through to config/default below.
         if detected not in UNRELIABLE_LICENSE_REFS:
             print(f"{LOG_PREFIX} Detected license: {detected}")
-            return detected
+            return LicenseResolution(detected, "license_file", license_file,
+                                     num_files, None)
         print(f"{LOG_PREFIX} Ignoring unreliable '{detected}' detected on the "
               f"LICENSE file; falling back to config/default.")
 
@@ -158,16 +176,43 @@ def resolve_license(repo_name: str) -> str | None:
         if (repo_name.endswith(f"/{project['PROJECT_NAME']}")
                 or repo_name == project['PROJECT_NAME']):
             print(f"{LOG_PREFIX} Using license from config: {project['MARKINGS']}")
-            return project['MARKINGS']
+            return LicenseResolution(project['MARKINGS'], "config", None,
+                                     num_files, project['PROJECT_NAME'])
 
     # A license file exists but nothing above resolved it -> keep the default so a
     # present-but-opaque LICENSE still yields a baseline.
-    if license_file_found:
+    if license_file:
         print(f"{LOG_PREFIX} Using default license: {DEFAULT_LICENSE}")
-        return DEFAULT_LICENSE
+        return LicenseResolution(DEFAULT_LICENSE, "default", license_file,
+                                 num_files, None)
 
     # No root-level license file and no config entry -> no baseline. Do NOT
     # fabricate a default; signal the caller to abort.
     print(f"{LOG_PREFIX} No root-level license file found and no config entry; "
           f"cannot establish a repository license baseline.")
-    return None
+    return LicenseResolution(None, "none", None, 0, None)
+
+
+def resolve_license(repo_name: str) -> str | None:
+    """
+    Resolve the repo's top-level license (back-compat wrapper over
+    resolve_license_details). Returns the SPDX id, or None when no root-level
+    license file and no config-map entry establish a baseline.
+    """
+    return resolve_license_details(repo_name).license
+
+
+def describe_resolution(res: LicenseResolution) -> str:
+    """
+    Plain-text parenthetical explaining where a resolution came from, for console
+    output (no links). Returns "" when there is nothing to say (no baseline).
+    """
+    if res.source == "license_file":
+        note = (f"; {res.num_license_files} license files present"
+                if res.num_license_files > 1 else "")
+        return f"(based on license file {res.license_file}{note})"
+    if res.source == "config":
+        return f"(from scanner/config.py entry for {res.config_project})"
+    if res.source == "default":
+        return "(license file present but license not conclusively detected; using default)"
+    return ""

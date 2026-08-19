@@ -10,7 +10,7 @@ import click
 from scanner.licenses import PERMISSIVE_LICENSES, COPYLEFT_LICENSES
 from scanner.full_repo import RepoScan
 from scanner.full_scanner import FullScanner
-from scanner.license_resolver import resolve_license
+from scanner.license_resolver import resolve_license_details, describe_resolution
 
 """
 Entry point for the full-repository scan.
@@ -93,7 +93,7 @@ def report_missing_root_license(repo_name: str, fail_on_findings: bool,
 
 def beautify_scan_output(flagged_files: dict, warning_files: dict,
                          license: str, fail_on_findings: bool,
-                         log_prefix: str) -> None:
+                         log_prefix: str, license_reason: str = "") -> None:
     """
     Print the full-repo scan report and exit with the appropriate status.
 
@@ -103,16 +103,24 @@ def beautify_scan_output(flagged_files: dict, warning_files: dict,
         license (str): The resolved top-level license of the repo.
         fail_on_findings (bool): Whether blocking issues should fail the run.
         log_prefix (str): The prefix to use for logging.
+        license_reason (str): Optional parenthetical explaining how the license was
+            resolved (e.g. "(based on license file LICENSE)"); appended to the
+            "Repository license" line.
     """
+    license_line = f"Repository license: {license}"
+    if license_reason:
+        license_line += f" {license_reason}"
+
     if not flagged_files and not warning_files:
         print(f"{log_prefix} ✅ No license or copyright issues detected across the repository")
+        print(f"{log_prefix} {license_line}")
         sys.exit(0)
 
     output = []
     output.append(f"{log_prefix} ┌───────────────────────────────────────────┐")
     output.append(f"{log_prefix} │        **Full-Repo Scan Report**           │")
     output.append(f"{log_prefix} ├───────────────────────────────────────────┤")
-    output.append(f"{log_prefix} │ Repository license: {license}")
+    output.append(f"{log_prefix} │ {license_line}")
     output.append(f"{log_prefix} │")
     output.append(f"{log_prefix} │ 📖 For more information, see: COMPLIANCE.md")
     output.append(f"{log_prefix} │    https://github.com/qualcomm/copyright-license-checker-action/blob/main/COMPLIANCE.md")
@@ -239,12 +247,14 @@ def main(repo_name: str, fail_on_findings: str, repo_path: str,
     # and keeps main.py (get_license) untouched.
     os.chdir(repo_path)
 
-    license = resolve_license(repo_name)
+    resolution = resolve_license_details(repo_name)
+    license = resolution.license
     if license is None:
         # No root-level license file and no config entry -> no baseline. Abort
         # rather than scan every file against a fabricated default license.
         report_missing_root_license(repo_name, fail_on_findings, LOG_PREFIX)
         return  # report_missing_root_license exits; return keeps intent explicit.
+    license_reason = describe_resolution(resolution)
 
     if license in PERMISSIVE_LICENSES:
         allowed_licenses = PERMISSIVE_LICENSES
@@ -259,7 +269,8 @@ def main(repo_name: str, fail_on_findings: str, repo_path: str,
 
     flagged_files, warning_files = scanner.run()
 
-    beautify_scan_output(flagged_files, warning_files, license, fail_on_findings, LOG_PREFIX)
+    beautify_scan_output(flagged_files, warning_files, license, fail_on_findings,
+                         LOG_PREFIX, license_reason)
 
 
 if __name__ == '__main__':

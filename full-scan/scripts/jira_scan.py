@@ -62,6 +62,7 @@ import os
 import re
 import sys
 import logging
+import subprocess
 import tempfile
 import urllib.parse
 
@@ -77,6 +78,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # pylint: disable=wrong-import-position
 from compare_tools import run_full_scan
 from compare_tools_remote import clone_repo
+from scanner.license_resolver import describe_resolution
 
 LOG_PREFIX = "< jira full-repo scan >"
 
@@ -462,9 +464,51 @@ def _finding_rows(path: str, entry: dict) -> list:
     return rows
 
 
+def _blob_ref(dest: str, ref: str) -> str:
+    """
+    The git ref to use in a GitHub blob URL: the requested --ref if given, else the
+    clone's checked-out branch, else the commit SHA (when detached). Falls back to
+    'HEAD' if git cannot be queried.
+    """
+    if ref:
+        return ref
+    try:
+        branch = subprocess.run(
+            ["git", "-C", dest, "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, check=True).stdout.strip()
+        if branch and branch != "HEAD":
+            return branch
+        sha = subprocess.run(
+            ["git", "-C", dest, "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True).stdout.strip()
+        return sha or "HEAD"
+    except (subprocess.CalledProcessError, OSError):
+        return "HEAD"
+
+
+def _license_reason(resolution, host: str, owner: str, repo: str,
+                    dest: str, ref: str) -> str:
+    """
+    Build the parenthetical explaining how the license was resolved, for the comment.
+
+    For a license-file source, link the file on the repo host at the scanned ref,
+    e.g. "(based on license file [LICENSE|https://host/owner/repo/blob/<ref>/LICENSE])";
+    add "; N license files present" when more than one exists. For config/default,
+    fall back to the plain-text describe_resolution (no link).
+    """
+    if resolution.source == "license_file" and resolution.license_file:
+        blob = _blob_ref(dest, ref)
+        name = resolution.license_file
+        url = f"https://{host}/{owner}/{repo}/blob/{blob}/{name}"
+        note = (f"; {resolution.num_license_files} license files present"
+                if resolution.num_license_files > 1 else "")
+        return f"(based on license file [{name}|{url}]{note})"
+    return describe_resolution(resolution)
+
+
 def build_comment_parts(repo_name: str, license_id: str, flagged: dict, warning: dict,
-                        scanned, ignored,
-                        limit: int = DEFAULT_COMMENT_LIMIT) -> list:
+                        scanned, ignored, limit: int = DEFAULT_COMMENT_LIMIT,
+                        license_reason: str = "") -> list:
     """
     Render the scan result as one or more Jira comment bodies, each <= `limit`.
 
@@ -486,17 +530,23 @@ def build_comment_parts(repo_name: str, license_id: str, flagged: dict, warning:
         scanned: The set/list of scanned file paths.
         ignored: The set/list of files skipped by .licenseignore.
         limit (int): Maximum length of each comment body.
+        license_reason (str): Optional parenthetical explaining how the license was
+            resolved (e.g. "(based on license file [LICENSE|url])"); appended to the
+            "Resolved license" summary line.
 
     Returns:
         list[str]: One or more Jira wiki-markup comment bodies (each len <= limit).
     """
     blocking_n = len(flagged)
     warning_n = len(warning)
+    resolved_line = f"*Resolved license:* {license_id}"
+    if license_reason:
+        resolved_line += f" {license_reason}"
     summary_lines = [
         "h3. Full-repository license/copyright scan",
         "",
         "*Repository:* {{" + repo_name + "}}",
-        f"*Resolved license:* {license_id}",
+        resolved_line,
         f"*Files scanned:* {len(scanned)}",
         f"*Blocking files:* {blocking_n}",
         f"*Warning files:* {warning_n}",
@@ -735,7 +785,7 @@ def main(issue_key: str, url_field: str, env_file: str, jira_url: str, creds_fil
                       f"Could not parse a repository from: {raw_url}", dry_run,
                       visibility)
         sys.exit(1)
-    _host, owner, repo, clone_url = parsed
+    host, owner, repo, clone_url = parsed
     repo_name = f"{owner}/{repo}"
 
     token = os.environ.get("GITHUB_TOKEN") or ""
@@ -749,7 +799,7 @@ def main(issue_key: str, url_field: str, env_file: str, jira_url: str, creds_fil
             sys.exit(1)
 
         try:
-            license_id, flagged, warning, scanned, ignored = run_full_scan(
+            license_id, flagged, warning, scanned, ignored, resolution = run_full_scan(
                 repo_name, dest, include_untracked, False, include_licenseignore)
         except Exception as exc:  # pylint: disable=broad-except
             _finish_error(client, issue_key, "scan_failed",
@@ -757,12 +807,16 @@ def main(issue_key: str, url_field: str, env_file: str, jira_url: str, creds_fil
                           visibility)
             sys.exit(1)
 
+        # Explain how the license was resolved, linking the source file when the
+        # baseline came from one (must be built while the clone still exists).
+        license_reason = _license_reason(resolution, host, owner, repo, dest, ref)
+
         # 0 means "auto": prefer MAX_COMMENT_LENGTH from the (now-loaded) .env, matching
         # qnaro; fall back to the built-in default.
         limit = comment_limit or int(
             os.environ.get("MAX_COMMENT_LENGTH", DEFAULT_COMMENT_LIMIT))
         comment_parts = build_comment_parts(repo_name, license_id, flagged, warning,
-                                             scanned, ignored, limit)
+                                             scanned, ignored, limit, license_reason)
         _post_or_print(client, issue_key, comment_parts, dry_run, visibility)
 
     if fail_on_findings and flagged:

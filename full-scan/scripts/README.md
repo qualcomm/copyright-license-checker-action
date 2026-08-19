@@ -162,9 +162,12 @@ python scripts/compare_tools_remote.py --orgs qualcomm --max-repos 5
 
 Fetches a repository URL from a Jira ticket field, shallow-clones the repo, runs the
 full-repo scan (the same in-process path as the tools above), and posts the
-findings/warnings — or a validation/clone/scan error — back onto the ticket as a single
-comment. Unlike the comparison tools, it does **not** run repolinter and produces no HTML
-report; it is a runner meant for an operator or an automation.
+findings/warnings — or a validation/clone/scan error — back onto the ticket. Unlike the
+comparison tools, it does **not** run repolinter and produces no HTML report; it is a runner
+meant for an operator or an automation. The comment's "Resolved license" line explains **why**
+that license was chosen — e.g. `GPL-2.0-only (based on license file [LICENSE|<repo-url>])`,
+linking the source file (and noting the count when several root license files exist), or
+`(from scanner/config.py entry …)` / `(… using default)` for the other resolution paths.
 
 ```
 python scripts/jira_scan.py <ISSUE-KEY> [--url-field NAME_OR_ID] [--env-file PATH]
