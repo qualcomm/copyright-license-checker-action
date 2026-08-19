@@ -1,9 +1,11 @@
-import re
-from scanner.patch import Patch
-
 """
 Module to check for copyright changes in a patch file.
 """
+
+import re
+
+from scanner.patch import Patch
+
 
 class CopyrightChecker:
     """
@@ -29,10 +31,11 @@ class CopyrightChecker:
         Returns:
             str: The normalized string.
         """
-        return ''.join(filter(str.isalpha, s))
+        return "".join(filter(str.isalpha, s))
 
-    def _check_allowed_transitions(self, deleted_copyrights_set: dict, 
-                                   added_copyrights: list) -> set:
+    def _check_allowed_transitions(
+        self, deleted_copyrights_set: dict, added_copyrights: list
+    ) -> set:
         """
         Check for allowed copyright transitions that should not be flagged.
 
@@ -44,22 +47,20 @@ class CopyrightChecker:
             set: Set of normalized deleted copyrights that are part of allowed transitions.
         """
         allowed = set()
-        
+
         # Define the allowed transition patterns
         deleted_pattern = "Qualcomm Innovation Center, Inc. All rights"
         added_pattern = "Qualcomm Technologies, Inc. and/or its subsidiaries"
-        
+
         # Check if any added copyright contains the allowed pattern
-        has_allowed_addition = any(
-            added_pattern in original for original, _ in added_copyrights
-        )
-        
+        has_allowed_addition = any(added_pattern in original for original, _ in added_copyrights)
+
         if has_allowed_addition:
             # Check deleted copyrights for the pattern
             for normalized, original in deleted_copyrights_set.items():
                 if deleted_pattern in original:
                     allowed.add(normalized)
-        
+
         return allowed
 
     def detect_copyright_changes(self, content: str) -> tuple:
@@ -92,17 +93,14 @@ class CopyrightChecker:
         Returns:
             dict: A dictionary of flagged files.
         """
-        source_files = [
-            change for change in self.patch.changes
-            if change['file_type'] == 'source'
-        ]
+        source_files = [change for change in self.patch.changes if change["file_type"] == "source"]
 
         flagged_files = {}
         for change in source_files:
-            added_copyrights, deleted_copyrights = self.detect_copyright_changes(change['content'])
+            added_copyrights, deleted_copyrights = self.detect_copyright_changes(change["content"])
 
             issues = []
-            if change['change_type'] == 'MODIFIED':
+            if change["change_type"] == "MODIFIED":
                 added_copyrights_set = {
                     normalized: original for original, normalized in added_copyrights
                 }
@@ -128,6 +126,6 @@ class CopyrightChecker:
                     ]
                     issues.append(f"Copyright deletions detected: {original_flagged_changes}")
                 if issues:
-                    flagged_files[change['path_name']] = issues
+                    flagged_files[change["path_name"]] = issues
 
         return flagged_files

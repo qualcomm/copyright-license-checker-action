@@ -1,8 +1,11 @@
 """
 Module to load optional .licenseignore configuration.
 """
-import pathspec
+
 from pathlib import Path
+
+import pathspec
+
 
 class IgnoreConfig:
     """
@@ -19,10 +22,11 @@ class IgnoreConfig:
         path = Path(ignore_path)
 
         if path.exists():
-            lines = path.read_text(encoding='utf-8').splitlines()
-            self.patterns = [line.strip() for line in lines
-                             if line.strip() and not line.strip().startswith('#')]
-            self.spec = pathspec.PathSpec.from_lines('gitwildmatch', self.patterns)
+            lines = path.read_text(encoding="utf-8").splitlines()
+            self.patterns = [
+                line.strip() for line in lines if line.strip() and not line.strip().startswith("#")
+            ]
+            self.spec = pathspec.PathSpec.from_lines("gitwildmatch", self.patterns)
         else:
             self.patterns = []
             self.spec = None

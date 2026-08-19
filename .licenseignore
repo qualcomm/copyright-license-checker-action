@@ -1,0 +1,10 @@
+# Test fixtures contain deliberately varied license/copyright text used to
+# exercise the checker itself; they are not real license grants.
+tests/**
+
+# These files' own content (SPDX identifiers, license names, and example
+# license text used for detection/testing logic) is mistaken by scancode for
+# an added license.
+main.py
+scanner/config.py
+scanner/license_scancode.py

@@ -23,7 +23,17 @@ load-plugins=
 confidence=
 
 # Disable the message, report, category or checker with the given id(s). You can either give multiple identifiers separated by comma (,) or put this option multiple times (only on the command line, not in the configuration file where it should appear only once).
-disable=missing-docstring,invalid-name
+# fixme: this repo deliberately carries TODO markers for complexity findings
+#   that are accepted for now (see max-complexity disables below) and revisited
+#   once proprietary-mode support lands; they are intentionally long-lived, not
+#   "must fix before merge" markers, so failing the build on them is not useful.
+# too-few-public-methods: several classes here (Patch, IgnoreConfig) are
+#   deliberately single-purpose data holders; forcing a second method would be
+#   busywork, not better design.
+# duplicate-code: the flagged spans are a short scancode subprocess invocation
+#   and a test fixture dict builder — extracting a shared helper for either
+#   would add indirection without reducing real duplication risk.
+disable=missing-docstring,invalid-name,too-few-public-methods,duplicate-code,fixme
 
 [REPORTS]
 # Set the output format. Available formats are text, parseable, colorized, json and jsonlines

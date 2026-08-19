@@ -1,8 +1,18 @@
 .env
 venv/
 .venv/
-test*
 .vscode/
 __pycache__
 *.pyc
 .idea/
+
+# Local scratch patch files used when running the checker by hand.
+# Deliberately narrow: a bare "test*" would also ignore the tests/ package.
+test.patch
+test*.patch
+
+# Test and coverage artifacts
+.tox/
+.coverage
+coverage.xml
+htmlcov/

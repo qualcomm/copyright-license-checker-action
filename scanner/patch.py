@@ -1,9 +1,11 @@
-import re
-from scanner.ignore_config import IgnoreConfig
-
 """
 Module to represent and process patch files.
 """
+
+import re
+
+from scanner.ignore_config import IgnoreConfig
+
 
 class Patch:
     """
@@ -20,11 +22,11 @@ class Patch:
         self.patchfile = patchfile
         self.ignore_config = IgnoreConfig()
 
-        with open(self.patchfile, 'r', encoding='utf-8') as f:
+        with open(self.patchfile, "r", encoding="utf-8") as f:
             self.patch_content = f.read()
 
         # Split patch into meta (git commit, summary) vs. code content
-        file_delimiter_regex = r'^diff .* b\/(?P<file_name>.*)$'
+        file_delimiter_regex = r"^diff .* b\/(?P<file_name>.*)$"
         r = re.split(file_delimiter_regex, self.patch_content, flags=re.MULTILINE)
         patch_content = r[1:]
         files_changes = list(zip(patch_content[::2], patch_content[1::2]))
@@ -50,18 +52,20 @@ class Patch:
             file_type = "binary" if "GIT binary patch" in file_change else "source"
 
             # Skip files that match hardcoded exclusions or config-based exclusions
-            if path_name.endswith(('.patch', '.bb', '.md', '.json', '.yml')):
+            if path_name.endswith((".patch", ".bb", ".md", ".json", ".yml")):
                 continue
 
             if self.ignore_config.is_excluded(path_name):
                 continue
 
-            self.changes.append({
-                'path_name': path_name,
-                'file_type': file_type,
-                'change_type': change_type,
-                'content': file_content
-            })
+            self.changes.append(
+                {
+                    "path_name": path_name,
+                    "file_type": file_type,
+                    "change_type": change_type,
+                    "content": file_content,
+                }
+            )
 
     def get_changes(self):
         """
