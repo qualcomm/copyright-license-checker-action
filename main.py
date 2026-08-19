@@ -179,6 +179,10 @@ def beautify_output(  # noqa: C901  pylint: disable=too-many-branches
     """
     Print the flagged files report in a beautified format.
 
+    Purely a rendering concern: it prints the report and returns. The
+    process exit code is decided by the caller, based on whether
+    flagged_files is non-empty (see main()).
+
     Args:
         flagged_files (dict): A dictionary of flagged files with blocking issues.
         warning_files (dict): A dictionary of files with warning issues (non-blocking).
@@ -189,7 +193,7 @@ def beautify_output(  # noqa: C901  pylint: disable=too-many-branches
     # Only show the report header if there are issues to report
     if not flagged_files and not warning_files:
         print(f"{log_prefix} ✅ No license or copyright issues detected")
-        sys.exit(0)
+        return
 
     output = []
     output.append(f"{log_prefix} ┌───────────────────────────────────────────┐")
@@ -250,12 +254,6 @@ def beautify_output(  # noqa: C901  pylint: disable=too-many-branches
 
     # Print the entire output block
     print("\n".join(output))
-
-    # Only exit with error if there are blocking issues
-    if flagged_files:
-        sys.exit(len(flagged_files))
-    else:
-        sys.exit(0)
 
 
 # TODO: exceeds team max-complexity=10 (classification branches map directly to
@@ -387,6 +385,8 @@ def main() -> None:  # noqa: C901
             flagged_files[file] = {"license_issues": [], "copyright_issues": issues}
 
     beautify_output(flagged_files, warning_files, repo_license, LOG_PREFIX)
+
+    sys.exit(1 if flagged_files else 0)
 
 
 if __name__ == "__main__":
