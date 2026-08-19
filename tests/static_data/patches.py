@@ -124,3 +124,54 @@ index 1234567..89abcde 100644
  old
 +new
 """
+
+# --- Regression-harness fixtures (see tests/test_regression_snapshot.py) ---
+# One file per patch so each maps to scancode detection keys "0_added.txt" /
+# "0_deleted.txt" -- the batch scanner indexes by position within the
+# patch's own source-file list, which is always a single entry here.
+
+# A pure addition: no deleted lines, so only "0_added.txt" is scanned.
+ADDITION_ONLY = """diff --git a/src/module.c b/src/module.c
+index 1234567..89abcde 100644
+--- a/src/module.c
++++ b/src/module.c
+@@ -1,2 +1,3 @@
+ int module(void) {
++    /* newly added block */
+     return 0;
+"""
+
+# A pure deletion: no added lines, so only "0_deleted.txt" is scanned.
+DELETION_ONLY = """diff --git a/src/utils.py b/src/utils.py
+index 1234567..89abcde 100644
+--- a/src/utils.py
++++ b/src/utils.py
+@@ -1,3 +1,2 @@
+ def utils():
+-    # license text being removed
+     return None
+"""
+
+# Both an addition and a deletion in the same file, so both "0_added.txt"
+# and "0_deleted.txt" are scanned.
+ADDITION_AND_DELETION = """diff --git a/src/core.cpp b/src/core.cpp
+index 1234567..89abcde 100644
+--- a/src/core.cpp
++++ b/src/core.cpp
+@@ -1,3 +1,3 @@
+ int core() {
+-    // old license text
++    // new license text
+     return 0;
+"""
+
+# A new source file with no license header at all.
+NEW_FILE_NO_LICENSE = """diff --git a/src/new_feature.py b/src/new_feature.py
+new file mode 100644
+index 0000000..1234567
+--- /dev/null
++++ b/src/new_feature.py
+@@ -0,0 +1,2 @@
++def new_feature():
++    return None
+"""
