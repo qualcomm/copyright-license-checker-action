@@ -312,11 +312,18 @@ license — the scan does **not** assume a default. Instead it stops with the st
 analysis. This avoids fabricating a permissive baseline and then wrongly flagging every
 file in, for example, a GPL repository that simply never committed a `LICENSE` file.
 
+An **empty / whitespace-only** license file counts as *no license* (it declares nothing),
+so it triggers the same stop — the report clarifies that a file exists but is empty. A
+**non-empty** license file that scancode merely can't classify is different: it keeps the
+`BSD-3-Clause-Clear` default (a safety net for genuine BSD files that scancode mis-detects),
+so it is still scanned.
+
 | Situation | Result |
 |---|---|
-| Root license file present | Scanned normally against the detected license |
+| Root license file present, license detected | Scanned normally against the detected license |
+| Non-empty license file, not conclusively detected | Scanned against the `BSD-3-Clause-Clear` default |
 | No license file, but repo is in `scanner/config.py` | Scanned normally against the configured license |
-| No license file **and** not in `scanner/config.py` | ⛔ **Scan stopped** — status "No Root-Level Licence Found" |
+| Empty license file (or none) **and** not in `scanner/config.py` | ⛔ **Scan stopped** — status "No Root-Level Licence Found" |
 
 Exit behavior follows `fail_on_findings`: the stopped scan **fails the build** (non-zero
 exit) when `fail_on_findings` is `true`, and is **report-only** (exit 0) otherwise.
