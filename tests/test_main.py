@@ -201,37 +201,33 @@ class TestIsUncertainLicenseIssue(unittest.TestCase):
 
 class TestBeautifyOutput(unittest.TestCase):
     """
-    beautify_output renders the report and decides the process exit code.
-
-    The exit contract matters: PR 2 changes how issues are routed into the
-    blocking vs. warning buckets, and these tests pin the current behavior.
+    beautify_output is a pure rendering concern: it prints the report and
+    returns. Exit-code semantics live in main() (see TestMainEntryPoint).
     """
 
-    def render(self, flagged: dict, warnings: dict):
+    def render(self, flagged: dict, warnings: dict) -> str:
         """
-        Call beautify_output, capturing its stdout and SystemExit code.
+        Call beautify_output, capturing its stdout.
 
         Args:
             flagged: Blocking-issue dictionary.
             warnings: Warning-issue dictionary.
 
         Returns:
-            Tuple of (captured stdout, exit code).
+            The captured stdout.
         """
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
-            with self.assertRaises(SystemExit) as caught:
-                main.beautify_output(flagged, warnings, "BSD-3-Clause-Clear", "PREFIX")
-        return buffer.getvalue(), caught.exception.code
+            main.beautify_output(flagged, warnings, "BSD-3-Clause-Clear", "PREFIX")
+        return buffer.getvalue()
 
-    def test_no_issues_exits_zero(self):
-        """A clean run reports success and exits 0."""
-        output, code = self.render({}, {})
-        self.assertEqual(code, 0)
+    def test_no_issues_reports_success(self):
+        """A clean run reports success."""
+        output = self.render({}, {})
         self.assertIn("No license or copyright issues detected", output)
 
-    def test_blocking_issue_exits_with_file_count(self):
-        """The exit code is the number of files with blocking issues."""
+    def test_blocking_issues_are_rendered(self):
+        """Blocking issues are rendered under the blocking-errors heading."""
         flagged = {
             "src/a.c": {
                 "license_issues": ["Incompatible license added: GPL-2.0-only"],
@@ -242,21 +238,19 @@ class TestBeautifyOutput(unittest.TestCase):
                 "copyright_issues": [],
             },
         }
-        output, code = self.render(flagged, {})
-        self.assertEqual(code, 2)
+        output = self.render(flagged, {})
         self.assertIn("B L O C K I N G   E R R O R S", output)
         self.assertIn("src/a.c", output)
 
-    def test_warnings_only_exits_zero(self):
-        """Warnings are reported but do not fail the build."""
+    def test_warnings_only_reports_warnings(self):
+        """Warnings are reported without the blocking-errors heading."""
         warnings = {
             "src/c.c": {
                 "license_issues": ["Incompatible license added: LicenseRef-scancode-unknown"],
                 "copyright_issues": [],
             }
         }
-        output, code = self.render({}, warnings)
-        self.assertEqual(code, 0)
+        output = self.render({}, warnings)
         self.assertIn("W A R N I N G S", output)
         self.assertNotIn("B L O C K I N G", output)
 
@@ -268,14 +262,13 @@ class TestBeautifyOutput(unittest.TestCase):
                 "copyright_issues": ["Copyright deletions detected: ['Copyright (c) 2019 X']"],
             }
         }
-        output, code = self.render(flagged, {})
-        self.assertEqual(code, 1)
+        output = self.render(flagged, {})
         self.assertIn("COPYRIGHT ISSUES", output)
 
     def test_compliance_doc_is_referenced(self):
         """Every report links to COMPLIANCE.md."""
         flagged = {"src/e.c": {"license_issues": ["x"], "copyright_issues": []}}
-        output, _ = self.render(flagged, {})
+        output = self.render(flagged, {})
         self.assertIn("COMPLIANCE.md", output)
 
 
@@ -361,6 +354,30 @@ class TestMainEntryPoint(LicenseFileTestCase):
         self.assertEqual(code, 1)
         self.assertIn("LICENSE ISSUES", output)
         self.assertIn("COPYRIGHT ISSUES", output)
+
+    def test_many_flagged_files_still_exit_one(self):
+        """
+        The exit code is 1 for any number of flagged files, never the count.
+
+        A POSIX exit status is 8 bits, so handing the OS a file count masked
+        every exact multiple of 256 back to 0 -- a PR breaking 256 files
+        reported a passing build. The wrap happens at the OS boundary, which an
+        in-process test cannot observe (SystemExit still carries the full int),
+        so this pins the contract that removes the hazard: the value handed to
+        sys.exit is always 1, whatever the count. Checks 255/256/257 to cover
+        the boundary either side of the first wrap, and 512 for the second.
+        """
+        for file_count in (255, 256, 257, 512):
+            with self.subTest(file_count=file_count):
+                license_issues = {
+                    f"src/file_{idx}.c": ["Incompatible license added: GPL-2.0-only"]
+                    for idx in range(file_count)
+                }
+                output, code = self.run_main(
+                    ["main.py", "pr.patch", "org/repo"], license_issues, {}
+                )
+                self.assertEqual(code, 1)
+                self.assertEqual(output.count("F I L E:"), file_count)
 
     def test_permissive_repo_gets_permissive_allowed_list(self):
         """A permissive repo license selects the permissive allowed list."""
