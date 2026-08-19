@@ -7,6 +7,7 @@ import pytest
 from click.testing import CliRunner
 
 import jira_scan as js
+from scanner.license_resolver import LicenseResolution
 
 
 # --- .env loading ------------------------------------------------------------
@@ -296,6 +297,13 @@ def test_build_comment_parts_renders_table():
     assert "|{{src/x.c}}|Copyright|No copyright statement found|" in body
 
 
+def test_build_comment_parts_renders_license_reason():
+    reason = "(based on license file [LICENSE|https://github.com/q/a/blob/main/LICENSE])"
+    parts = js.build_comment_parts("q/a", "GPL-2.0-only", {}, {},
+                                   scanned={"a.c"}, ignored=set(), license_reason=reason)
+    assert f"*Resolved license:* GPL-2.0-only {reason}" in parts[0]
+
+
 def test_build_comment_parts_continues_into_multiple_comments():
     # Many blocking files under a small limit -> spread across parts, none dropped
     # (well under the cap), each part valid and labelled.
@@ -363,11 +371,14 @@ def jira_env(monkeypatch):
     monkeypatch.setattr(js, "resolve_url_field_id", lambda client, name: "customfield_101")
 
 
-def _stub_scan(monkeypatch, flagged, warning):
+def _stub_scan(monkeypatch, flagged, warning, resolution=None):
+    if resolution is None:
+        resolution = LicenseResolution("BSD-3-Clause-Clear", "license_file",
+                                       "LICENSE", 1, None)
     monkeypatch.setattr(js, "clone_repo", lambda *a, **k: (True, ""))
     monkeypatch.setattr(
         js, "run_full_scan",
-        lambda *a, **k: ("BSD-3-Clause-Clear", flagged, warning, {"a.c"}, set()))
+        lambda *a, **k: (resolution.license, flagged, warning, {"a.c"}, set(), resolution))
 
 
 def _capture_posts(monkeypatch):
@@ -417,6 +428,33 @@ def test_main_findings_posts_comment_exit_0(jira_env, monkeypatch):
     assert len(posts) == 1
     assert "Incompatible license: GPL-2.0" in posts[0][1]
     assert posts[0][2] is None                      # public by default
+
+
+def test_main_comment_shows_license_reason_link(jira_env, monkeypatch):
+    # The posted comment's Resolved-license line links the source license file.
+    monkeypatch.setattr(js, "fetch_repo_url",
+                        lambda client, key, fid: "https://github.com/q/a")
+    _stub_scan(monkeypatch, flagged={}, warning={},
+               resolution=LicenseResolution("GPL-2.0-only", "license_file",
+                                            "LICENSE", 1, None))
+    posts = _capture_posts(monkeypatch)
+    result = CliRunner().invoke(js.main, ["OSSOPS-1"] + _NO_ENV)
+    assert result.exit_code == 0
+    body = posts[0][1]
+    assert "*Resolved license:* GPL-2.0-only (based on license file [LICENSE|" in body
+    assert "https://github.com/q/a/blob/" in body     # links the file on the repo host
+
+
+def test_main_comment_reason_notes_multiple_license_files(jira_env, monkeypatch):
+    monkeypatch.setattr(js, "fetch_repo_url",
+                        lambda client, key, fid: "https://github.com/q/a")
+    _stub_scan(monkeypatch, flagged={}, warning={},
+               resolution=LicenseResolution("GPL-2.0-only", "license_file",
+                                            "LICENSE", 2, None))
+    posts = _capture_posts(monkeypatch)
+    result = CliRunner().invoke(js.main, ["OSSOPS-1"] + _NO_ENV)
+    assert result.exit_code == 0
+    assert "2 license files present" in posts[0][1]
 
 
 def test_main_multi_part_posts_multiple_comments(jira_env, monkeypatch):

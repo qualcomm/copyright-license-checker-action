@@ -6,6 +6,12 @@ from click.testing import CliRunner
 
 import full_scan
 from scanner.licenses import PERMISSIVE_LICENSES, COPYLEFT_LICENSES
+from scanner.license_resolver import LicenseResolution
+
+
+def _res(license_id, source="license_file", license_file="LICENSE",
+         num_files=1, config_project=None):
+    return LicenseResolution(license_id, source, license_file, num_files, config_project)
 
 
 def _issues(license_issues=None, copyright_issues=None):
@@ -33,6 +39,17 @@ def test_beautify_report_only_exits_zero(capsys):
             flagged, {}, "BSD-3-Clause-Clear", False, full_scan.LOG_PREFIX)
     assert exc.value.code == 0
     assert "F I N D I N G S  (report-only)" in capsys.readouterr().out
+
+
+def test_beautify_shows_license_reason(capsys):
+    # The resolved-license line carries the plain-text "why" reason.
+    flagged = {"a.c": _issues(license_issues=["Incompatible license: GPL-2.0"])}
+    with pytest.raises(SystemExit):
+        full_scan.beautify_scan_output(
+            flagged, {}, "GPL-2.0-only", False, full_scan.LOG_PREFIX,
+            "(based on license file LICENSE)")
+    out = capsys.readouterr().out
+    assert "Repository license: GPL-2.0-only (based on license file LICENSE)" in out
 
 
 def test_beautify_warnings_only_exits_zero():
@@ -64,7 +81,8 @@ def test_allowed_license_selection(monkeypatch, tmp_path, resolved, expected_all
         def run(self):
             return {}, {}
 
-    monkeypatch.setattr(full_scan, "resolve_license", lambda repo_name: resolved)
+    monkeypatch.setattr(full_scan, "resolve_license_details",
+                        lambda repo_name: _res(resolved))
     monkeypatch.setattr(full_scan, "RepoScan", lambda **kwargs: object())
     monkeypatch.setattr(full_scan, "FullScanner", _FakeScanner)
     monkeypatch.setattr(full_scan.os, "chdir", lambda path: None)
@@ -84,7 +102,9 @@ def test_missing_root_license_blocks_when_failon(monkeypatch, tmp_path):
     # resolve_license -> None (no root license file, no config entry) with
     # fail_on_findings=true: abort with the status and a non-zero exit, and prove
     # the scan is skipped (RepoScan/FullScanner would raise if reached).
-    monkeypatch.setattr(full_scan, "resolve_license", lambda repo_name: None)
+    monkeypatch.setattr(full_scan, "resolve_license_details",
+                        lambda repo_name: _res(None, source="none",
+                                               license_file=None, num_files=0))
     monkeypatch.setattr(full_scan, "RepoScan", _boom_if_scanned)
     monkeypatch.setattr(full_scan, "FullScanner", _boom_if_scanned)
     monkeypatch.setattr(full_scan.os, "chdir", lambda path: None)
@@ -98,7 +118,9 @@ def test_missing_root_license_blocks_when_failon(monkeypatch, tmp_path):
 
 def test_missing_root_license_reports_only(monkeypatch, tmp_path):
     # Same abort, report-only: exit 0, status still printed, scan still skipped.
-    monkeypatch.setattr(full_scan, "resolve_license", lambda repo_name: None)
+    monkeypatch.setattr(full_scan, "resolve_license_details",
+                        lambda repo_name: _res(None, source="none",
+                                               license_file=None, num_files=0))
     monkeypatch.setattr(full_scan, "RepoScan", _boom_if_scanned)
     monkeypatch.setattr(full_scan, "FullScanner", _boom_if_scanned)
     monkeypatch.setattr(full_scan.os, "chdir", lambda path: None)

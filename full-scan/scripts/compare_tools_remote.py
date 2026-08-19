@@ -324,7 +324,7 @@ def process_one_repo(task: dict) -> dict:
             return _error_record(repo_name, "clone_failed", clone_err)
 
         try:
-            license_id, flagged, warning, scanned, ignored = ct.run_full_scan(
+            license_id, flagged, warning, scanned, ignored, _res = ct.run_full_scan(
                 repo_name, dest, False, task["verbose"],
                 task["include_licenseignore"])
         except Exception as exc:  # pylint: disable=broad-except

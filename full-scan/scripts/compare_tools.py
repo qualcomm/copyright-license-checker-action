@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # pylint: disable=wrong-import-position
 from scanner.licenses import PERMISSIVE_LICENSES, COPYLEFT_LICENSES
-from scanner.license_resolver import resolve_license
+from scanner.license_resolver import resolve_license_details
 from scanner.full_repo import (
     RepoScan,
     SOURCE_FILE_EXTENSIONS,
@@ -250,15 +250,18 @@ def run_full_scan(repo_name: str, repo_path: str, include_untracked: bool,
 
     Returns:
         tuple: (license, flagged_files, warning_files, scanned_paths,
-                ignored_paths). ignored_paths are source files .licenseignore
-                excluded (recorded even when include_licenseignore is True).
+                ignored_paths, resolution). ignored_paths are source files
+                .licenseignore excluded (recorded even when include_licenseignore is
+                True). resolution is the LicenseResolution explaining how `license`
+                was chosen (source file / config / default).
     """
     prev_cwd = os.getcwd()
     captured = io.StringIO()
     try:
         os.chdir(repo_path)
         with contextlib.redirect_stdout(captured):
-            license_id = resolve_license(repo_name)
+            resolution = resolve_license_details(repo_name)
+        license_id = resolution.license
         if license_id is None:
             # No root-level license file and no config entry: the shipped scan
             # (full_scan.main) aborts here with a "No Root-Level Licence Found"
@@ -266,7 +269,7 @@ def run_full_scan(repo_name: str, repo_path: str, include_untracked: bool,
             # baseline -- and report the repo as unscanned.
             if verbose and captured.getvalue().strip():
                 print(captured.getvalue().strip(), file=sys.stderr)
-            return "No Root-Level Licence Found", {}, {}, set(), set()
+            return "No Root-Level Licence Found", {}, {}, set(), set(), resolution
         if license_id in PERMISSIVE_LICENSES:
             allowed_licenses = PERMISSIVE_LICENSES
         elif license_id in COPYLEFT_LICENSES:
@@ -285,7 +288,8 @@ def run_full_scan(repo_name: str, repo_path: str, include_untracked: bool,
     if verbose and captured.getvalue().strip():
         print(captured.getvalue().strip(), file=sys.stderr)
 
-    return license_id, flagged_files, warning_files, scanned_paths, ignored_paths
+    return (license_id, flagged_files, warning_files, scanned_paths, ignored_paths,
+            resolution)
 
 
 def build_repolinter_cmd(repo_path: str, ruleset_url: str) -> list:
@@ -998,7 +1002,7 @@ def main(repo_name: str, repo_path: str, include_untracked: bool,
     print(f"{LOG_PREFIX} Running full-repo scancode scan (this can take a minute)...",
           file=sys.stderr)
     try:
-        license_id, flagged_files, warning_files, scanned_paths, ignored_paths = \
+        license_id, flagged_files, warning_files, scanned_paths, ignored_paths, _res = \
             run_full_scan(repo_name, repo_path, include_untracked, verbose,
                           include_licenseignore)
     except subprocess.CalledProcessError as exc:
