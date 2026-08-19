@@ -419,9 +419,46 @@ def test_main_visibility_error_comment_is_also_restricted(jira_env, monkeypatch)
     monkeypatch.setattr(js, "fetch_repo_url", lambda client, key, fid: "")
     posts = _capture_posts(monkeypatch)
     result = CliRunner().invoke(
-        js.main, ["OSSOPS-1", "--comment-visibility-group", "developers"] + _NO_ENV)
+        js.main, ["OSSOPS-1", "--comment-visibility-group", "qc-devs"] + _NO_ENV)
     assert result.exit_code == 1
-    assert posts[0][2] == {"type": "group", "value": "developers"}
+    assert posts[0][2] == {"type": "group", "value": "qc-devs"}
+
+
+def test_main_comment_visibility_role_flag_threads_through(jira_env, monkeypatch):
+    # A PROJECT ROLE restriction (the OSSOPS 'Developers' case) produces a
+    # {"type": "role", ...} visibility, not a group.
+    monkeypatch.setattr(js, "fetch_repo_url",
+                        lambda client, key, fid: "https://github.com/q/a")
+    _stub_scan(monkeypatch, flagged={}, warning={})
+    posts = _capture_posts(monkeypatch)
+    result = CliRunner().invoke(
+        js.main, ["OSSOPS-1", "--comment-visibility-role", "Developers"] + _NO_ENV)
+    assert result.exit_code == 0
+    assert posts[0][2] == {"type": "role", "value": "Developers"}
+
+
+def test_main_comment_visibility_role_from_env(jira_env, monkeypatch):
+    monkeypatch.setenv("JIRA_COMMENT_VISIBILITY_ROLE", "Developers")
+    monkeypatch.setattr(js, "fetch_repo_url",
+                        lambda client, key, fid: "https://github.com/q/a")
+    _stub_scan(monkeypatch, flagged={}, warning={})
+    posts = _capture_posts(monkeypatch)
+    result = CliRunner().invoke(js.main, ["OSSOPS-1"] + _NO_ENV)
+    assert result.exit_code == 0
+    assert posts[0][2] == {"type": "role", "value": "Developers"}
+
+
+def test_main_visibility_role_and_group_mutually_exclusive(jira_env, monkeypatch):
+    # A comment has a single visibility; setting both role and group is a config
+    # error (exit 2) and nothing is posted.
+    posts = _capture_posts(monkeypatch)
+    result = CliRunner().invoke(
+        js.main,
+        ["OSSOPS-1", "--comment-visibility-role", "Developers",
+         "--comment-visibility-group", "qc-devs"] + _NO_ENV)
+    assert result.exit_code == 2
+    assert posts == []
+    assert "only one of" in result.output
 
 
 def test_main_fail_on_findings_exits_1(jira_env, monkeypatch):

@@ -32,9 +32,12 @@ reused):
     JIRA_USER        Jira username     (falls back to line 1 of ~/.jira-creds)
     JIRA_PASSWORD    Jira password/token (falls back to line 2 of ~/.jira-creds)
     MAX_COMMENT_LENGTH  (optional) comment-body cap; default 16384 (see --comment-limit)
+    JIRA_COMMENT_VISIBILITY_ROLE   (optional) restrict the posted comment to this
+                     Jira PROJECT ROLE (e.g. 'Developers'); default public. See
+                     --comment-visibility-role.
     JIRA_COMMENT_VISIBILITY_GROUP  (optional) restrict the posted comment to this
-                     Jira group (e.g. 'developers'); default public. See
-                     --comment-visibility-group.
+                     Jira GROUP; default public. Mutually exclusive with the ROLE
+                     var. See --comment-visibility-group.
     GITHUB_TOKEN     (optional) clone auth for private / Enterprise repos
     REQUESTS_CA_BUNDLE  (optional) CA bundle for corporate SSL (Jira API + git)
 
@@ -45,7 +48,8 @@ Usage:
     python scripts/jira_scan.py <ISSUE-KEY> [--url-field NAME_OR_ID] [--env-file PATH]
                                 [--jira-url URL] [--ref BRANCH] [--include-untracked]
                                 [--include-licenseignore] [--comment-limit N]
-                                [--comment-visibility-group GROUP]
+                                [--comment-visibility-role ROLE |
+                                 --comment-visibility-group GROUP]
                                 [--dry-run] [--fail-on-findings]
 
 Dependencies: `git` and `scancode` on PATH (the scan shells out to them), and the `jira`
@@ -552,8 +556,8 @@ def _post_or_print(client: JIRA, issue_key: str, body: str, dry_run: bool,
         click.echo(f"ERROR: failed to post comment to {issue_key}: {exc}", err=True)
         click.echo(body, err=True)
         sys.exit(3)
-    where = (f" (restricted to group '{visibility['value']}')"
-             if visibility and visibility.get("type") == "group" else "")
+    where = (f" (restricted to {visibility['type']} '{visibility['value']}')"
+             if visibility else "")
     click.echo(f"Posted scan results to {issue_key}{where}.")
 
 
@@ -592,30 +596,52 @@ def _finish_error(client: JIRA, issue_key: str, category: str, message: str,
               help="Maximum Jira comment length before detail is truncated. 0 (the "
                    "default) uses MAX_COMMENT_LENGTH from the environment, else "
                    f"{DEFAULT_COMMENT_LIMIT}.")
+@click.option("--comment-visibility-role", default=None,
+              help="Restrict the posted comment to a Jira PROJECT ROLE (e.g. "
+                   "'Developers'), via the comment's visibility field. Value is the "
+                   "role NAME as configured on the project. Defaults to "
+                   "JIRA_COMMENT_VISIBILITY_ROLE. Mutually exclusive with "
+                   "--comment-visibility-group.")
 @click.option("--comment-visibility-group", default=None,
-              help="Restrict the posted comment so only members of this Jira group "
-                   "can see it (e.g. 'developers'), via the comment's visibility "
-                   "field. Defaults to JIRA_COMMENT_VISIBILITY_GROUP from the "
-                   "environment, else the comment is public (unrestricted).")
+              help="Restrict the posted comment to a Jira GROUP (e.g. "
+                   "'qualcomm-developers'), via the comment's visibility field. "
+                   "Defaults to JIRA_COMMENT_VISIBILITY_GROUP. Mutually exclusive "
+                   "with --comment-visibility-role. (Note: many OSSOPS setups use a "
+                   "project ROLE named 'Developers' -- use --comment-visibility-role "
+                   "for that.)")
 @click.option("--dry-run", is_flag=True, default=False, show_default=True,
               help="Do everything except post; print the comment to stdout.")
 @click.option("--fail-on-findings", is_flag=True, default=False, show_default=True,
               help="Exit non-zero when blocking findings exist (default: exit 0).")
 def main(issue_key: str, url_field: str, env_file: str, jira_url: str, creds_file: str,
          insecure: bool, ref: str, include_untracked: bool, include_licenseignore: bool,
-         comment_limit: int, comment_visibility_group: str, dry_run: bool,
-         fail_on_findings: bool) -> None:
+         comment_limit: int, comment_visibility_role: str, comment_visibility_group: str,
+         dry_run: bool, fail_on_findings: bool) -> None:
     """Scan the repository referenced by a Jira ticket and comment the results back."""
     logging.basicConfig(level=logging.WARNING)
     load_env_file(env_file)
 
-    # Optional comment-visibility restriction. --comment-visibility-group wins, else
-    # JIRA_COMMENT_VISIBILITY_GROUP from the (now-loaded) .env/environment. When set,
-    # EVERY comment this run posts -- results and error reports -- is restricted to
-    # that group so scan output is not exposed to ticket reporters/watchers outside it.
+    # Optional comment-visibility restriction. A comment carries a single visibility,
+    # which Jira expresses as {"type": "role"|"group", "value": <name>}. Role and
+    # group are mutually exclusive; setting both is a config error. CLI flags win
+    # over the JIRA_COMMENT_VISIBILITY_* env vars. When set, the restriction applies
+    # to EVERY comment this run posts (results AND error reports), so scan output is
+    # not exposed to ticket reporters/watchers outside that role/group.
+    vis_role = (comment_visibility_role
+                or os.environ.get("JIRA_COMMENT_VISIBILITY_ROLE") or "").strip()
     vis_group = (comment_visibility_group
                  or os.environ.get("JIRA_COMMENT_VISIBILITY_GROUP") or "").strip()
-    visibility = {"type": "group", "value": vis_group} if vis_group else None
+    if vis_role and vis_group:
+        click.echo("ERROR: set only one of --comment-visibility-role / "
+                   "--comment-visibility-group (a comment has a single visibility).",
+                   err=True)
+        sys.exit(2)
+    if vis_role:
+        visibility = {"type": "role", "value": vis_role}
+    elif vis_group:
+        visibility = {"type": "group", "value": vis_group}
+    else:
+        visibility = None
 
     try:
         cfg = read_jira_config(jira_url, insecure=insecure, creds_file=creds_file)
