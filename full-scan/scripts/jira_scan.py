@@ -32,6 +32,9 @@ reused):
     JIRA_USER        Jira username     (falls back to line 1 of ~/.jira-creds)
     JIRA_PASSWORD    Jira password/token (falls back to line 2 of ~/.jira-creds)
     MAX_COMMENT_LENGTH  (optional) comment-body cap; default 16384 (see --comment-limit)
+    JIRA_COMMENT_VISIBILITY_GROUP  (optional) restrict the posted comment to this
+                     Jira group (e.g. 'developers'); default public. See
+                     --comment-visibility-group.
     GITHUB_TOKEN     (optional) clone auth for private / Enterprise repos
     REQUESTS_CA_BUNDLE  (optional) CA bundle for corporate SSL (Jira API + git)
 
@@ -42,6 +45,7 @@ Usage:
     python scripts/jira_scan.py <ISSUE-KEY> [--url-field NAME_OR_ID] [--env-file PATH]
                                 [--jira-url URL] [--ref BRANCH] [--include-untracked]
                                 [--include-licenseignore] [--comment-limit N]
+                                [--comment-visibility-group GROUP]
                                 [--dry-run] [--fail-on-findings]
 
 Dependencies: `git` and `scancode` on PATH (the scan shells out to them), and the `jira`
@@ -213,7 +217,8 @@ def build_client(cfg: "JiraConfig") -> JIRA:
             f"Could not connect to Jira at {cfg.base_url}: {exc}", cfg.password)) from None
 
 
-def post_comment(client: JIRA, issue_key: str, body: str) -> None:
+def post_comment(client: JIRA, issue_key: str, body: str,
+                 visibility: dict = None) -> None:
     """
     Add a comment to a Jira issue.
 
@@ -221,12 +226,19 @@ def post_comment(client: JIRA, issue_key: str, body: str) -> None:
         client (jira.JIRA): A connected client.
         issue_key (str): The issue key.
         body (str): The wiki-markup comment body.
+        visibility (dict): Optional comment-visibility restriction passed straight
+            to the Jira REST `visibility` field, e.g.
+            {"type": "group", "value": "developers"} to make the comment visible
+            only to members of the 'developers' group (or {"type": "role", ...}).
+            When None, the comment is posted with default (unrestricted) visibility.
 
     Raises:
         JiraError: If the comment cannot be added.
     """
     try:
-        client.add_comment(issue_key, body)
+        # jira-python's add_comment maps `visibility` onto the REST visibility
+        # field; passing None is a no-op (unrestricted), so this covers both cases.
+        client.add_comment(issue_key, body, visibility=visibility)
     except Exception as exc:  # pylint: disable=broad-except
         raise JiraError(f"Could not add comment to {issue_key}: {exc}") from None
 
@@ -525,26 +537,32 @@ def build_error_comment(category: str, message: str) -> str:
 
 # --- Orchestration -----------------------------------------------------------
 
-def _post_or_print(client: JIRA, issue_key: str, body: str, dry_run: bool) -> None:
+def _post_or_print(client: JIRA, issue_key: str, body: str, dry_run: bool,
+                   visibility: dict = None) -> None:
     """Post the comment to the ticket, or (under --dry-run) print it and post nothing."""
     if dry_run:
-        click.echo(f"--- DRY RUN: comment for {issue_key} (not posted) ---")
+        vis = (f" [visibility: {visibility['type']}={visibility['value']}]"
+               if visibility else "")
+        click.echo(f"--- DRY RUN: comment for {issue_key}{vis} (not posted) ---")
         click.echo(body)
         return
     try:
-        post_comment(client, issue_key, body)
+        post_comment(client, issue_key, body, visibility)
     except JiraError as exc:
         click.echo(f"ERROR: failed to post comment to {issue_key}: {exc}", err=True)
         click.echo(body, err=True)
         sys.exit(3)
-    click.echo(f"Posted scan results to {issue_key}.")
+    where = (f" (restricted to group '{visibility['value']}')"
+             if visibility and visibility.get("type") == "group" else "")
+    click.echo(f"Posted scan results to {issue_key}{where}.")
 
 
 def _finish_error(client: JIRA, issue_key: str, category: str, message: str,
-                  dry_run: bool) -> None:
+                  dry_run: bool, visibility: dict = None) -> None:
     """Report a validation/clone/scan failure back onto the ticket."""
     click.echo(f"ERROR ({category}): {message}", err=True)
-    _post_or_print(client, issue_key, build_error_comment(category, message), dry_run)
+    _post_or_print(client, issue_key, build_error_comment(category, message),
+                   dry_run, visibility)
 
 
 @click.command()
@@ -574,16 +592,30 @@ def _finish_error(client: JIRA, issue_key: str, category: str, message: str,
               help="Maximum Jira comment length before detail is truncated. 0 (the "
                    "default) uses MAX_COMMENT_LENGTH from the environment, else "
                    f"{DEFAULT_COMMENT_LIMIT}.")
+@click.option("--comment-visibility-group", default=None,
+              help="Restrict the posted comment so only members of this Jira group "
+                   "can see it (e.g. 'developers'), via the comment's visibility "
+                   "field. Defaults to JIRA_COMMENT_VISIBILITY_GROUP from the "
+                   "environment, else the comment is public (unrestricted).")
 @click.option("--dry-run", is_flag=True, default=False, show_default=True,
               help="Do everything except post; print the comment to stdout.")
 @click.option("--fail-on-findings", is_flag=True, default=False, show_default=True,
               help="Exit non-zero when blocking findings exist (default: exit 0).")
 def main(issue_key: str, url_field: str, env_file: str, jira_url: str, creds_file: str,
          insecure: bool, ref: str, include_untracked: bool, include_licenseignore: bool,
-         comment_limit: int, dry_run: bool, fail_on_findings: bool) -> None:
+         comment_limit: int, comment_visibility_group: str, dry_run: bool,
+         fail_on_findings: bool) -> None:
     """Scan the repository referenced by a Jira ticket and comment the results back."""
     logging.basicConfig(level=logging.WARNING)
     load_env_file(env_file)
+
+    # Optional comment-visibility restriction. --comment-visibility-group wins, else
+    # JIRA_COMMENT_VISIBILITY_GROUP from the (now-loaded) .env/environment. When set,
+    # EVERY comment this run posts -- results and error reports -- is restricted to
+    # that group so scan output is not exposed to ticket reporters/watchers outside it.
+    vis_group = (comment_visibility_group
+                 or os.environ.get("JIRA_COMMENT_VISIBILITY_GROUP") or "").strip()
+    visibility = {"type": "group", "value": vis_group} if vis_group else None
 
     try:
         cfg = read_jira_config(jira_url, insecure=insecure, creds_file=creds_file)
@@ -604,13 +636,14 @@ def main(issue_key: str, url_field: str, env_file: str, jira_url: str, creds_fil
     if not raw_url:
         _finish_error(client, issue_key, "missing_url",
                       f"The '{url_field}' field on {issue_key} is empty or absent.",
-                      dry_run)
+                      dry_run, visibility)
         sys.exit(1)
 
     parsed = parse_repo_url(raw_url)
     if not parsed:
         _finish_error(client, issue_key, "url_unparseable",
-                      f"Could not parse a repository from: {raw_url}", dry_run)
+                      f"Could not parse a repository from: {raw_url}", dry_run,
+                      visibility)
         sys.exit(1)
     _host, owner, repo, clone_url = parsed
     repo_name = f"{owner}/{repo}"
@@ -621,7 +654,8 @@ def main(issue_key: str, url_field: str, env_file: str, jira_url: str, creds_fil
         ok, clone_err = clone_repo(clone_url, dest, token, cfg.ca_bundle, ref)
         if not ok:
             _finish_error(client, issue_key, "clone_failed",
-                          f"git clone {clone_url} failed: {clone_err}", dry_run)
+                          f"git clone {clone_url} failed: {clone_err}", dry_run,
+                          visibility)
             sys.exit(1)
 
         try:
@@ -629,7 +663,8 @@ def main(issue_key: str, url_field: str, env_file: str, jira_url: str, creds_fil
                 repo_name, dest, include_untracked, False, include_licenseignore)
         except Exception as exc:  # pylint: disable=broad-except
             _finish_error(client, issue_key, "scan_failed",
-                          f"full_scan failed for {repo_name}: {exc}", dry_run)
+                          f"full_scan failed for {repo_name}: {exc}", dry_run,
+                          visibility)
             sys.exit(1)
 
         # 0 means "auto": prefer MAX_COMMENT_LENGTH from the (now-loaded) .env, matching
@@ -638,7 +673,7 @@ def main(issue_key: str, url_field: str, env_file: str, jira_url: str, creds_fil
             os.environ.get("MAX_COMMENT_LENGTH", DEFAULT_COMMENT_LIMIT))
         comment = build_comment(repo_name, license_id, flagged, warning,
                                 scanned, ignored, limit)
-        _post_or_print(client, issue_key, comment, dry_run)
+        _post_or_print(client, issue_key, comment, dry_run, visibility)
 
     if fail_on_findings and flagged:
         sys.exit(1)

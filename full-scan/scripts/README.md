@@ -170,6 +170,7 @@ report; it is a runner meant for an operator or an automation.
 python scripts/jira_scan.py <ISSUE-KEY> [--url-field NAME_OR_ID] [--env-file PATH]
                             [--jira-url URL] [--ref BRANCH] [--include-untracked]
                             [--include-licenseignore] [--comment-limit N]
+                            [--comment-visibility-group GROUP]
                             [--dry-run] [--fail-on-findings]
 ```
 
@@ -187,6 +188,12 @@ python scripts/jira_scan.py <ISSUE-KEY> [--url-field NAME_OR_ID] [--env-file PAT
   from the environment, else **16384** (the limit the OSSOPS Jira enforces, matching
   qnaro). The summary counts are always kept; per-file detail is truncated with an explicit
   "N more file(s) omitted" note if it would exceed the cap.
+- `--comment-visibility-group GROUP` — restrict the posted comment so only members of the
+  named Jira group can see it (e.g. `developers`), via the comment's visibility field.
+  Applies to **every** comment the run posts (results *and* error reports), so scan output
+  isn't exposed to ticket reporters/watchers outside the group. Defaults to
+  `JIRA_COMMENT_VISIBILITY_GROUP` from the environment, else the comment is public. (The
+  posting account must be allowed to set that group's visibility on the Jira instance.)
 - `--dry-run` — do everything except post; print the comment to stdout. Use this first.
 - `--fail-on-findings` — exit non-zero when blocking findings exist (default: report-only,
   exit 0).
@@ -205,6 +212,8 @@ env-var names match qnaro's, so the same `.env` values can be reused.
 - `JIRA_USER` / `JIRA_PASSWORD` — Jira username and password (or token). If unset, they fall
   back to the two lines of `~/.jira-creds` (override the fallback with `--creds-file`).
 - `MAX_COMMENT_LENGTH` — comment-body cap (default 16384); see `--comment-limit`.
+- `JIRA_COMMENT_VISIBILITY_GROUP` — restrict the posted comment to this Jira group (e.g.
+  `developers`); default public. See `--comment-visibility-group`.
 - `GITHUB_TOKEN` — clone auth for private/Enterprise repos (optional for public github.com).
 - `REQUESTS_CA_BUNDLE` — CA bundle for the Jira API HTTPS and for git (`GIT_SSL_CAINFO`).
   Or pass `--insecure` to skip TLS verification entirely (as djira does) when no CA bundle

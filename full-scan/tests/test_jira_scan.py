@@ -137,8 +137,8 @@ class _FakeClient:
         setattr(holder, fields, self._issue_value)          # fields == the field id
         return types.SimpleNamespace(key=key, fields=holder)
 
-    def add_comment(self, key, body):
-        self.comments.append((key, body))
+    def add_comment(self, key, body, visibility=None):
+        self.comments.append((key, body, visibility))
 
 
 def test_build_client_passes_basic_auth_and_verify(monkeypatch):
@@ -218,7 +218,14 @@ def test_fetch_repo_url_empty():
 def test_post_comment_calls_add_comment():
     client = _FakeClient()
     js.post_comment(client, "OSSOPS-1", "hi")
-    assert client.comments == [("OSSOPS-1", "hi")]
+    assert client.comments == [("OSSOPS-1", "hi", None)]
+
+
+def test_post_comment_passes_group_visibility():
+    client = _FakeClient()
+    vis = {"type": "group", "value": "developers"}
+    js.post_comment(client, "OSSOPS-1", "hi", vis)
+    assert client.comments == [("OSSOPS-1", "hi", vis)]
 
 
 # --- parse_repo_url ----------------------------------------------------------
@@ -337,8 +344,9 @@ def _stub_scan(monkeypatch, flagged, warning):
 
 def _capture_posts(monkeypatch):
     posts = []
-    monkeypatch.setattr(js, "post_comment",
-                        lambda client, key, body: posts.append((key, body)))
+    monkeypatch.setattr(
+        js, "post_comment",
+        lambda client, key, body, visibility=None: posts.append((key, body, visibility)))
     return posts
 
 
@@ -380,6 +388,40 @@ def test_main_findings_posts_comment_exit_0(jira_env, monkeypatch):
     assert result.exit_code == 0
     assert len(posts) == 1
     assert "Incompatible license: GPL-2.0" in posts[0][1]
+    assert posts[0][2] is None                      # public by default
+
+
+def test_main_comment_visibility_group_flag_threads_through(jira_env, monkeypatch):
+    monkeypatch.setattr(js, "fetch_repo_url",
+                        lambda client, key, fid: "https://github.com/q/a")
+    _stub_scan(monkeypatch, flagged={}, warning={})
+    posts = _capture_posts(monkeypatch)
+    result = CliRunner().invoke(
+        js.main, ["OSSOPS-1", "--comment-visibility-group", "developers"] + _NO_ENV)
+    assert result.exit_code == 0
+    assert posts[0][2] == {"type": "group", "value": "developers"}
+
+
+def test_main_comment_visibility_group_from_env(jira_env, monkeypatch):
+    monkeypatch.setenv("JIRA_COMMENT_VISIBILITY_GROUP", "developers")
+    monkeypatch.setattr(js, "fetch_repo_url",
+                        lambda client, key, fid: "https://github.com/q/a")
+    _stub_scan(monkeypatch, flagged={}, warning={})
+    posts = _capture_posts(monkeypatch)
+    result = CliRunner().invoke(js.main, ["OSSOPS-1"] + _NO_ENV)
+    assert result.exit_code == 0
+    assert posts[0][2] == {"type": "group", "value": "developers"}
+
+
+def test_main_visibility_error_comment_is_also_restricted(jira_env, monkeypatch):
+    # An error comment (e.g. missing URL) must carry the same restriction, so a
+    # failure report is not exposed more widely than a results comment.
+    monkeypatch.setattr(js, "fetch_repo_url", lambda client, key, fid: "")
+    posts = _capture_posts(monkeypatch)
+    result = CliRunner().invoke(
+        js.main, ["OSSOPS-1", "--comment-visibility-group", "developers"] + _NO_ENV)
+    assert result.exit_code == 1
+    assert posts[0][2] == {"type": "group", "value": "developers"}
 
 
 def test_main_fail_on_findings_exits_1(jira_env, monkeypatch):
