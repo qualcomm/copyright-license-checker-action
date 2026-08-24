@@ -110,10 +110,10 @@ def _gh_get_json(url: str, token: str, ca_bundle: str):
 
 
 def list_org_repos(org: str, token: str, ca_bundle: str,
-                   include_archived: bool, max_repo_size_mb: int) -> list:
+                   include_archived: bool, max_repo_size_mb: int,
+                   repo_type: str = "public", skipped_out: list = None) -> list:
     """
-    List an org's public, non-fork repos (paginated), applying the fork/archived/size
-    filters.
+    List an org's non-fork repos (paginated), applying the fork/archived/size filters.
 
     A listing failure for one org (rate limit, network, org not found) is logged and
     yields an empty list so the rest of the run continues.
@@ -125,15 +125,23 @@ def list_org_repos(org: str, token: str, ca_bundle: str,
         include_archived (bool): Keep archived repos (excluded by default).
         max_repo_size_mb (int): Skip repos whose reported size exceeds this many MB
             (0 disables the cap). See DEFAULT_MAX_REPO_SIZE_MB.
+        repo_type (str): The GitHub `type=` filter -- "public" (the default, which
+            preserves the original public-only behavior), "all", "private", or
+            "internal". Anything other than "public" needs a token with org read
+            access to return private/internal repos.
+        skipped_out (list): Optional out-parameter; when provided, each fork/archived/
+            size-skipped repo is appended as {"repo_name", "reason"} so callers can
+            report a skipped count. Left untouched (the skip is only logged) when None.
 
     Returns:
-        list: [{"repo_name": "owner/name", "clone_url": "https://..."}].
+        list: per-repo dicts with keys repo_name, clone_url, visibility, private,
+            default_branch.
     """
     repos = []
     page = 1
     while True:
         url = (f"{GITHUB_API}/orgs/{org}/repos"
-               f"?type=public&per_page=100&page={page}")
+               f"?type={repo_type}&per_page=100&page={page}")
         try:
             batch = _gh_get_json(url, token, ca_bundle)
         except urllib.error.HTTPError as exc:
@@ -153,25 +161,37 @@ def list_org_repos(org: str, token: str, ca_bundle: str,
         if not batch:
             break
         for entry in batch:
+            name = entry.get("name")
+            owner = (entry.get("owner") or {}).get("login", org)
+            repo_name = f"{owner}/{name}" if name else org
             if entry.get("fork"):
+                if skipped_out is not None:
+                    skipped_out.append({"repo_name": repo_name, "reason": "fork"})
                 continue
             if entry.get("archived") and not include_archived:
+                if skipped_out is not None:
+                    skipped_out.append({"repo_name": repo_name, "reason": "archived"})
                 continue
-            name = entry.get("name")
             if not name:
                 continue
-            owner = (entry.get("owner") or {}).get("login", org)
             # Size-based skip for giant repos (kernel mirrors etc.). Logged per repo
             # so the skip is never silent.
             size_kb = entry.get("size") or 0
             if max_repo_size_mb and size_kb > max_repo_size_mb * 1024:
                 _log(f"skipping {owner}/{name}: {size_kb // 1024} MB exceeds "
                      f"--max-repo-size-mb={max_repo_size_mb} (force with --repos).")
+                if skipped_out is not None:
+                    skipped_out.append({"repo_name": repo_name,
+                                        "reason": f"size>{max_repo_size_mb}MB"})
                 continue
             repos.append({
                 "repo_name": f"{owner}/{name}",
                 "clone_url": (entry.get("clone_url")
                               or f"https://{GITHUB_HOST}/{owner}/{name}.git"),
+                "visibility": (entry.get("visibility")
+                               or ("private" if entry.get("private") else "public")),
+                "private": bool(entry.get("private")),
+                "default_branch": entry.get("default_branch") or "HEAD",
             })
         if len(batch) < 100:
             break
