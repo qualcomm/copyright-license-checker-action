@@ -4,62 +4,12 @@
 import scanner.license_resolver as lr
 
 
-# A genuine BSD-3-Clause LICENSE with the year-less Qualcomm header that scancode
-# 32.2.1 mis-tags as proprietary -- the exact case the text heuristic must recover.
-_BSD3_TEXT = """BSD 3-Clause License
-
-Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-1. Redistributions of source code must retain the above copyright notice, this
-   list of conditions and the following disclaimer.
-2. Redistributions in binary form must reproduce the above copyright notice, this
-   list of conditions and the following disclaimer in the documentation and/or
-   other materials provided with the distribution.
-3. Neither the name of the copyright holder nor the names of its contributors may
-   be used to endorse or promote products derived from this software without
-   specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS".
-"""
-
-# BSD-2-Clause: same redistribution clause but NO clause 3 -> must NOT match.
-_BSD2_TEXT = """BSD 2-Clause License
-
-Copyright (c) 2020 Example
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-1. Redistributions of source code must retain the above copyright notice.
-2. Redistributions in binary form must reproduce the above copyright notice.
-
-THIS SOFTWARE IS PROVIDED "AS IS".
-"""
-
-
 def _with_license_file(tmp_path, monkeypatch, detected, content="dummy license text"):
     """chdir into a temp repo with a LICENSE file (default: non-license text), and
     stub scancode detection to return `detected`."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "LICENSE").write_text(content)
     monkeypatch.setattr(lr, "_detect_license_from_file", lambda path: detected)
-
-
-# --- _looks_like_bsd3 heuristic corpus ---------------------------------------
-
-def test_looks_like_bsd3_corpus(tmp_path):
-    def _w(text):
-        p = tmp_path / "L"
-        p.write_text(text)
-        return lr._looks_like_bsd3(str(p))
-    assert _w(_BSD3_TEXT) is True                    # genuine BSD-3 (Qualcomm header)
-    assert _w(_BSD2_TEXT) is False                   # BSD-2: no clause 3
-    assert _w("MIT License\n\nPermission is hereby granted, free of charge...") is False
-    assert _w("My project. TODO: add a license.") is False
-    assert _w("") is False
 
 
 # --- resolution outcomes ------------------------------------------------------
@@ -69,26 +19,21 @@ def test_real_license_passthrough(tmp_path, monkeypatch):
     assert lr.resolve_license("owner/unconfigured-repo-xyz") == "MIT"
 
 
-def test_scancode_bsd_variant_normalizes(tmp_path, monkeypatch):
-    # A real scancode BSD detection normalizes to the org canonical BSD.
-    _with_license_file(tmp_path, monkeypatch, "BSD-2-Clause")
-    res = lr.resolve_license_details("owner/unconfigured-repo-xyz")
-    assert res.license == "BSD-3-Clause-Clear" and res.source == "license_file"
-
-
-def test_qcom_bsd_recovered_by_text_heuristic(tmp_path, monkeypatch):
-    # scancode mis-tags the Qualcomm BSD LICENSE as proprietary (or detects nothing);
-    # the text heuristic recovers it as a REAL BSD-3-Clause detection -- NOT a default.
-    for detected in ("LicenseRef-scancode-proprietary-license", None):
-        _with_license_file(tmp_path, monkeypatch, detected, content=_BSD3_TEXT)
+def test_scancode_bsd_detection_passthrough(tmp_path, monkeypatch):
+    # A real scancode BSD detection is reported as its actual SPDX id -- NOT
+    # normalized to a canonical BSD (the old DEFAULT_LICENSE squash is gone).
+    for detected in ("BSD-3-Clause", "BSD-2-Clause"):
+        _with_license_file(tmp_path, monkeypatch, detected)
         res = lr.resolve_license_details("owner/unconfigured-repo-xyz")
-        assert res.license == "BSD-3-Clause-Clear", detected
-        assert res.source == "license_file", detected
+        assert res.license == detected and res.source == "license_file", detected
 
 
-def test_proprietary_on_nonbsd_text_aborts(tmp_path, monkeypatch):
-    # A proprietary catch-all on NON-BSD text: no heuristic match, no config ->
-    # abort (no fabricated default). Records the file for the "undetected" message.
+def test_proprietary_detection_aborts(tmp_path, monkeypatch):
+    # A proprietary catch-all is distrusted; with no config match -> abort (no
+    # fabricated default), recording the file for the "undetected" message. This
+    # also covers a genuine BSD-3 LICENSE that scancode 32.2.1 mis-tags as proprietary
+    # (this repo + qualcomm/commit-emails-check-action): with the text heuristic removed
+    # it aborts here until the scancode upgrade detects that text correctly as BSD-3.
     _with_license_file(tmp_path, monkeypatch, "LicenseRef-scancode-proprietary-license")
     res = lr.resolve_license_details("owner/unconfigured-repo-xyz")
     assert res.license is None and res.source == "none"

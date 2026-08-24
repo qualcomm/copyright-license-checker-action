@@ -16,25 +16,29 @@ Robust repo-license resolution for the full-repo scan.
 This is a full_scan-owned replacement for main.get_license (the PR path). It
 exists because scancode's verdict on a repo's own LICENSE file is not always
 trustworthy: scancode 32.2.1 mis-detects some standard OSS licenses as its
-catch-all "proprietary-license" at high confidence (e.g. a plain BSD-3-Clause
-LICENSE with a year-less Qualcomm copyright detects as
-LicenseRef-scancode-proprietary-license, matched_length 219, score 99.1). When
-that (mis)detection becomes the repo's resolved license, the allowed-set is
-[proprietary] and every compliant file in the repo is flagged incompatible --
-poisoning the whole baseline.
+catch-all "proprietary-license" at high confidence (e.g. the canonical
+"BSD 3-Clause License" template text -- as used by this repo's own LICENSE --
+detects as LicenseRef-scancode-proprietary-license, matched_length 219,
+score 99.1). When that (mis)detection becomes the repo's resolved license, the
+allowed-set is [proprietary] and every compliant file in the repo is flagged
+incompatible -- poisoning the whole baseline.
 
-The resolution order mirrors main.get_license (LICENSE file -> config map ->
-default), with two full_scan-only differences:
+The resolution order is LICENSE file -> config map -> abort, with two full_scan-only
+differences from main.get_license:
   * a LICENSE-file detection that yields ONLY scancode's unreliable proprietary
-    catch-all is treated as inconclusive and falls through to the config map /
-    default, rather than trusting it; and
-  * the BSD-3-Clause-Clear default is NOT assigned out of thin air: when the repo
-    has NO root-level license file AND no config-map entry, resolution returns
-    None so the caller can abort with a clear "No Root-Level Licence Found" status
-    instead of scanning every file against a fabricated permissive baseline (which
-    mass-flagged a GPL repo with no LICENSE file, e.g. qualcomm-linux/eva-driver).
-    The default is kept only when a license file physically exists but could not
-    be resolved.
+    catch-all is treated as inconclusive and falls through to the config map,
+    rather than trusting it; and
+  * there is NO fabricated default. When nothing above establishes a baseline,
+    resolution returns None so the caller can abort with a clear "No Root-Level
+    Licence Found" status instead of scanning every file against a fabricated
+    permissive baseline (which mass-flagged a GPL repo with no LICENSE file, e.g.
+    qualcomm-linux/eva-driver). A real detection is reported as its actual SPDX id
+    (BSD variants are NOT normalized to a canonical BSD).
+
+Consequence to note: a genuine BSD-3-Clause LICENSE that scancode 32.2.1 mis-tags as
+proprietary -- this repo's own LICENSE, and qualcomm/commit-emails-check-action -- now
+resolves to None and aborts rather than being recovered. This is an accepted regression
+until the scancode version upgrade, which detects that text correctly as BSD-3-Clause.
 
 main.get_license / main.detect_license_from_file are intentionally left as-is
 (they belong to the PR/patch-scan path, owned separately); the same mis-resolution
@@ -43,12 +47,10 @@ there is tracked as a patch-scan issue for that owner, not fixed in this repo.
 
 LOG_PREFIX = "< full-repo license/copyright check >"
 
-DEFAULT_LICENSE = "BSD-3-Clause-Clear"
-
 # Structured result of resolving a repo's baseline license, so callers can explain
 # WHY a license was chosen (not just what).
 #   license      -- resolved SPDX id, or None when no baseline could be established
-#   source       -- "license_file" | "config" | "default" | "none"
+#   source       -- "license_file" | "config" | "none"
 #   license_file -- the root file the baseline came from / that is present (or None)
 #   num_license_files -- how many NON-EMPTY root-level license files exist (for the "N present" note)
 #   config_project    -- the config.py PROJECT_NAME matched (when source == "config")
@@ -126,7 +128,7 @@ def _has_license_text(path: str) -> bool:
 
     An empty or whitespace-only license file has no license to stand on, so it is
     treated as absent (see resolve_license_details) rather than fabricating a
-    default from nothing.
+    baseline from nothing.
     """
     try:
         with open(path, encoding="utf-8", errors="ignore") as handle:
@@ -135,39 +137,14 @@ def _has_license_text(path: str) -> bool:
         return False
 
 
-def _looks_like_bsd3(path: str) -> bool:
-    """
-    Whether a license file's TEXT is a BSD-3-Clause license.
-
-    scancode 32.2.1 confidently mis-detects the standard year-less Qualcomm BSD
-    header (`Copyright (c) Qualcomm Technologies, Inc.`) as its proprietary
-    catch-all, offering no BSD signal at all. Since that is a widespread, genuinely
-    BSD-3-Clause LICENSE, this text-signature check recovers it: it requires the
-    BSD-family redistribution clause AND clause 3 ("neither the name of ... endorse
-    or promote"), which is what makes it 3-Clause (BSD-2 lacks it) and which no
-    non-BSD license carries. Whitespace/case are normalized first. Only consulted
-    when scancode is inconclusive, so it never overrides a real scancode detection.
-    """
-    try:
-        with open(path, encoding="utf-8", errors="ignore") as handle:
-            text = handle.read()
-    except OSError:
-        return False
-    normalized = " ".join(text.lower().split())
-    return ("redistribution and use in source and binary forms" in normalized
-            and "neither the name of" in normalized
-            and "endorse or promote" in normalized)
-
-
 def resolve_license_details(repo_name: str) -> LicenseResolution:
     """
     Resolve the repo's top-level license AND explain where the answer came from.
 
-    Order: scancode detection -> BSD-3 text heuristic -> config map -> abort. A
-    LICENSE-file detection that is only scancode's unreliable proprietary catch-all
-    (UNRELIABLE_LICENSE_REFS) is ignored; a genuine BSD-3-Clause LICENSE scancode
-    mis-tags that way is recovered by _looks_like_bsd3 as a real detection. Any
-    detected BSD variant normalizes to BSD-3-Clause-Clear.
+    Order: scancode detection -> config map -> abort. A LICENSE-file detection that
+    is only scancode's unreliable proprietary catch-all (UNRELIABLE_LICENSE_REFS) is
+    ignored and falls through; any other detection is reported as its actual SPDX id
+    (BSD variants are NOT normalized -- the real id is preserved).
 
     There is NO fabricated default. When nothing above establishes a baseline the
     result is source "none" (license None) and the caller must abort. The three
@@ -186,9 +163,9 @@ def resolve_license_details(repo_name: str) -> LicenseResolution:
         LicenseResolution: license + source metadata (see the namedtuple).
     """
     # An empty / whitespace-only license file has no license content, so treat it as
-    # absent: only NON-empty candidates count as usable license files. This stops an
-    # empty LICENSE from fabricating the default baseline (while a NON-empty file that
-    # scancode merely can't classify still falls to the default -- see below).
+    # absent: only NON-empty candidates count as usable license files. This keeps an
+    # empty LICENSE distinguishable from a NON-empty file whose license scancode merely
+    # can't classify -- both abort, but with different "no baseline" messages (see below).
     present, empty_present = [], []
     for candidate in LICENSE_FILE_CANDIDATES:
         path = os.path.join(os.getcwd(), candidate)
@@ -205,29 +182,15 @@ def resolve_license_details(repo_name: str) -> LicenseResolution:
         detected = _detect_license_from_file(os.path.join(os.getcwd(), license_file))
 
     if detected:
-        # Any BSD variant normalizes to the org's canonical BSD (a REAL detection,
-        # attributed to the license file which said BSD).
-        if "bsd" in detected.lower():
-            print(f"{LOG_PREFIX} Detected BSD variant; normalizing to {DEFAULT_LICENSE}")
-            return LicenseResolution(DEFAULT_LICENSE, "license_file", license_file,
-                                     num_files, None)
-        # Trust the detection unless it is only scancode's unreliable proprietary
-        # catch-all; in that case fall through to the BSD heuristic / config below.
+        # Trust the detection and report its actual SPDX id (BSD variants are NOT
+        # normalized) unless it is only scancode's unreliable proprietary catch-all;
+        # in that case fall through to the config map below.
         if detected not in UNRELIABLE_LICENSE_REFS:
             print(f"{LOG_PREFIX} Detected license: {detected}")
             return LicenseResolution(detected, "license_file", license_file,
                                      num_files, None)
         print(f"{LOG_PREFIX} Ignoring unreliable '{detected}' detected on the "
-              f"LICENSE file; trying the BSD-3 text heuristic / config.")
-
-    # scancode was inconclusive (nothing detected, or only its unreliable proprietary
-    # catch-all). Recover a genuine BSD-3-Clause LICENSE by its text signature --
-    # scancode 32.2.1 mis-tags the year-less Qualcomm BSD header (see _looks_like_bsd3).
-    if license_file and _looks_like_bsd3(os.path.join(os.getcwd(), license_file)):
-        print(f"{LOG_PREFIX} LICENSE recognized as BSD-3-Clause by text signature "
-              f"(scancode mis-detected it); resolving to {DEFAULT_LICENSE}.")
-        return LicenseResolution(DEFAULT_LICENSE, "license_file", license_file,
-                                 num_files, None)
+              f"LICENSE file; trying the config map.")
 
     # Config-map fallback (same suffix match main.get_license uses). An explicit
     # config entry is a human-declared license, so it is honored even with no LICENSE.
