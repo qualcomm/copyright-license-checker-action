@@ -31,6 +31,7 @@ PERMISSIVE_LICENSES = [
     "CC0-1.0",
     "ICU",
     "LicenseRef-scancode-unicode",
+    "LicenseRef-scancode-bsd-x11",
     "Apache-2.0 WITH LLVM-exception",
     "Apache-2.0 WITH LLVM-exception AND Apache-2.0 AND LLVM-exception",
 ]
