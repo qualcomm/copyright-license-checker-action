@@ -67,6 +67,12 @@ def test_beautify_warnings_only_exits_zero():
     ("BSD-3-Clause-Clear", PERMISSIVE_LICENSES),   # permissive -> full permissive set
     ("GPL-2.0-only", COPYLEFT_LICENSES),           # copyleft -> full copyleft set
     ("Foo-1.0", ["Foo-1.0"]),                      # unknown -> just the license itself
+    # Compound all-permissive (scancode reports this for some Qualcomm LICENSEs)
+    # must select the full permissive set, not a singleton that flags every file.
+    ("BSD-3-Clause-Clear AND BSD-3-Clause", PERMISSIVE_LICENSES),
+    # A partially-permissive compound satisfies neither list -> falls to the
+    # singleton, guarding against over-broadening the bucket.
+    ("MIT AND Foo-1.0", ["MIT AND Foo-1.0"]),
 ])
 def test_allowed_license_selection(monkeypatch, tmp_path, resolved, expected_allowed):
     # The resolved repo license selects which allow-list every file is judged

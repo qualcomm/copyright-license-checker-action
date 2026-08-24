@@ -7,8 +7,9 @@ from scanner.full_scanner import (
     FullScanner,
     confident_license_expression,
     copyright_matches_expected,
+    expression_allowed_by,
 )
-from scanner.licenses import PERMISSIVE_LICENSES
+from scanner.licenses import PERMISSIVE_LICENSES, COPYLEFT_LICENSES
 
 
 def make_scanner():
@@ -40,6 +41,33 @@ def test_only_uncertain_is_warning():
     # An unknown LicenseRef-scancode-* not in the permissive list, alone, warns.
     assert make_scanner().classify_license(
         "LicenseRef-scancode-unknown-license-reference") == "warning"
+
+
+# --- expression_allowed_by: the shared AND/OR allow-list evaluator ------------
+# (Same kernel behind per-file classification AND full_scan's repo bucket
+# selection, so a compound all-permissive repo license selects the full
+# permissive set instead of a singleton bucket that would flag every file.)
+
+@pytest.mark.parametrize("expression, allowed, expected", [
+    ("BSD-3-Clause-Clear", PERMISSIVE_LICENSES, True),                   # single permissive
+    ("BSD-3-Clause-Clear AND BSD-3-Clause", PERMISSIVE_LICENSES, True),  # compound all-permissive
+    ("MIT OR GPL-2.0", PERMISSIVE_LICENSES, True),                       # OR: one permissive option suffices
+    ("(MIT OR Apache-2.0) AND GPL-2.0", PERMISSIVE_LICENSES, False),     # trailing AND disallowed
+    ("GPL-2.0-only", PERMISSIVE_LICENSES, False),                        # copyleft not in permissive
+    ("GPL-2.0-only AND GPL-3.0-only", COPYLEFT_LICENSES, True),          # compound all-copyleft vs copyleft list
+    ("BSD-3-Clause AND GPL-2.0-only", PERMISSIVE_LICENSES, False),       # mixed: not all permissive
+    ("BSD-3-Clause AND GPL-2.0-only", COPYLEFT_LICENSES, False),         # mixed: not all copyleft
+])
+def test_expression_allowed_by(expression, allowed, expected):
+    assert expression_allowed_by(expression, allowed) is expected
+
+
+def test_is_expression_permissive_delegates():
+    # The method is a thin wrapper over the module-level kernel, bound to the
+    # scanner's permissive list -- so the two must agree.
+    for expr in ("BSD-3-Clause-Clear AND BSD-3-Clause", "(MIT OR Apache-2.0) AND GPL-2.0"):
+        assert (make_scanner().is_expression_permissive(expr)
+                == expression_allowed_by(expr, PERMISSIVE_LICENSES))
 
 
 # --- confident_license_expression: the bare-word noise filter -----------------

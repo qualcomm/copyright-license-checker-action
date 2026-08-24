@@ -9,7 +9,7 @@ import click
 
 from scanner.licenses import PERMISSIVE_LICENSES, COPYLEFT_LICENSES
 from scanner.full_repo import RepoScan
-from scanner.full_scanner import FullScanner
+from scanner.full_scanner import FullScanner, expression_allowed_by
 from scanner.license_resolver import resolve_license_details, describe_resolution
 
 """
@@ -284,9 +284,15 @@ def main(repo_name: str, fail_on_findings: str, repo_path: str,
         return  # report_missing_root_license exits; return keeps intent explicit.
     license_reason = describe_resolution(resolution)
 
-    if license in PERMISSIVE_LICENSES:
+    # Select the allow-list every file is judged against, honoring the resolved
+    # license's AND/OR structure rather than exact string membership: a compound
+    # all-permissive license such as "BSD-3-Clause-Clear AND BSD-3-Clause" (what
+    # scancode reports for some Qualcomm LICENSE files) must select the full
+    # permissive set, not a singleton [license] bucket that would then flag every
+    # compliant BSD file as an incompatible license.
+    if expression_allowed_by(license, PERMISSIVE_LICENSES):
         allowed_licenses = PERMISSIVE_LICENSES
-    elif license in COPYLEFT_LICENSES:
+    elif expression_allowed_by(license, COPYLEFT_LICENSES):
         allowed_licenses = COPYLEFT_LICENSES
     else:
         allowed_licenses = [license]

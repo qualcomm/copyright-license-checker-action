@@ -62,6 +62,40 @@ def split_license_expression(expression: str) -> list:
     return licenses
 
 
+def expression_allowed_by(expression: str, allowed: list) -> bool:
+    """
+    Evaluate whether an SPDX license expression is satisfied by `allowed`,
+    honoring AND / OR structure: every AND group must be satisfied, and within an
+    OR group at least one option must be in `allowed`. Flattening the expression
+    is wrong -- it would accept a disallowed license hidden in an AND group and
+    reject a valid dual-license such as "MIT OR GPL-2.0-only".
+
+    This is the shared kernel behind both per-file classification
+    (FullScanner.is_expression_permissive, `allowed` = the permissive set) and the
+    repo baseline bucket selection (full_scan.main, `allowed` = PERMISSIVE_LICENSES
+    or COPYLEFT_LICENSES), so the two use identical AND/OR semantics -- a compound
+    all-permissive repo license selects the full permissive set rather than a
+    singleton bucket that would then flag every compliant file.
+
+    Args:
+        expression (str): The SPDX license expression to evaluate.
+        allowed (list): The list of individual license ids considered allowed.
+
+    Returns:
+        bool: True if the expression is satisfied by `allowed`, False otherwise.
+    """
+    expression = expression.strip()
+    for and_group in expression.split(' AND '):
+        and_group = and_group.strip()
+        if ' OR ' in and_group:
+            or_licenses = [lic.strip() for lic in and_group.strip('()').split(' OR ')]
+            if not any(lic in allowed for lic in or_licenses):
+                return False
+        elif and_group.strip('()') not in allowed:
+            return False
+    return True
+
+
 # scancode attaches short "bare word" license references -- e.g. the word "gpl"
 # in a comment or an identifier such as `lgpl_gpl_bsd` (its tokenizer splits on
 # underscores) -- as license matches. When such a reference sits far from any
@@ -221,22 +255,10 @@ class FullScanner:
         Returns:
             bool: True if the expression is permissive, False otherwise.
         """
-        expression = expression.strip()
-
-        # Every AND group must be permissive; within a group with an OR, at least
-        # one option must be permissive. This correctly handles a leading
-        # "(X OR Y) AND Z" -- the OR group passes on a permissive option AND the
-        # trailing Z is still checked (unlike the PR path; see the docstring).
-        for and_group in expression.split(' AND '):
-            and_group = and_group.strip()
-            if ' OR ' in and_group:
-                or_licenses = [lic.strip() for lic in and_group.strip('()').split(' OR ')]
-                if not any(lic in self.permissive_licenses for lic in or_licenses):
-                    return False
-            else:
-                if and_group.strip('()') not in self.permissive_licenses:
-                    return False
-        return True
+        # Delegates to the shared module-level kernel (expression_allowed_by) so
+        # per-file classification and full_scan's repo bucket selection apply
+        # identical AND/OR semantics.
+        return expression_allowed_by(expression, self.permissive_licenses)
 
     def classify_license(self, expression: str) -> str:
         """

@@ -32,7 +32,7 @@ from scanner.full_repo import (
     SOURCE_FILE_EXTENSIONS,
     LICENSE_OPTIONAL_EXTENSIONS,
 )
-from scanner.full_scanner import FullScanner
+from scanner.full_scanner import FullScanner, expression_allowed_by
 
 """
 Compare repolinter against our full-repo license/copyright scanner.
@@ -270,9 +270,14 @@ def run_full_scan(repo_name: str, repo_path: str, include_untracked: bool,
             if verbose and captured.getvalue().strip():
                 print(captured.getvalue().strip(), file=sys.stderr)
             return "No Root-Level Licence Found", {}, {}, set(), set(), resolution
-        if license_id in PERMISSIVE_LICENSES:
+        # Bucket selection must match the shipped full_scan.main: honor the
+        # resolved license's AND/OR structure (not exact membership) so a compound
+        # all-permissive id like "BSD-3-Clause-Clear AND BSD-3-Clause" selects the
+        # full permissive set, not a [license] singleton that would flag every
+        # compliant file -- otherwise this diagnostic reports false mismatches.
+        if expression_allowed_by(license_id, PERMISSIVE_LICENSES):
             allowed_licenses = PERMISSIVE_LICENSES
-        elif license_id in COPYLEFT_LICENSES:
+        elif expression_allowed_by(license_id, COPYLEFT_LICENSES):
             allowed_licenses = COPYLEFT_LICENSES
         else:
             allowed_licenses = [license_id]
