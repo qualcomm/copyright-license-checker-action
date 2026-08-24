@@ -81,11 +81,9 @@ def report_missing_root_license(repo_name: str, fail_on_findings: bool,
         body = [
             f"A root-level license file ({license_file}) is present, but its license "
             f"could not be",
-            "identified (scancode did not recognize it, it is not BSD-3-Clause, and the "
-            "repo is not",
-            "configured in scanner/config.py). No repository license baseline could be "
-            "established,",
-            "so no per-file license or copyright analysis was performed.",
+            "identified (scancode did not recognize it and the repo is not configured in",
+            "scanner/config.py). No repository license baseline could be established, so no",
+            "per-file license or copyright analysis was performed.",
         ]
     elif empty:
         status = "No Root-Level Licence Found"

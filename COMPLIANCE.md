@@ -306,17 +306,14 @@ against, and it establishes that baseline **only** from real evidence — it doe
 fabricate a default:
 1. a license detected by scancode in a **root-level license file** (`LICENSE` /
    `LICENSE.txt` / `LICENSE.md` / `COPYING`, incl. British/lowercase spellings), or
-2. a genuine **BSD-3-Clause** license recognized from the file's text when scancode
-   mis-detects it (scancode 32.2.1 mislabels the standard year-less Qualcomm BSD header
-   as proprietary), or
-3. an explicit entry in **`scanner/config.py`** for repositories onboarded there.
+2. an explicit entry in **`scanner/config.py`** for repositories onboarded there.
 
 If none of those establish a baseline, the scan **stops** and performs no per-file
 analysis — it never assumes a permissive default. The stop reports one of:
 
 | Situation | Result |
 |---|---|
-| License detected (scancode or BSD-3 text) | ✅ Scanned against the detected license |
+| License detected by scancode in a root-level license file | ✅ Scanned against the detected license |
 | No license file, but repo is in `scanner/config.py` | ✅ Scanned against the configured license |
 | No root-level license file (and not in config) | ⛔ **Stopped** — "No Root-Level Licence Found" |
 | Root license file present but **empty** | ⛔ **Stopped** — "No Root-Level Licence Found" (empty) |
