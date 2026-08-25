@@ -1,7 +1,9 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
+import os
 import subprocess
+
 from scanner.ignore_config import IgnoreConfig
 
 """
@@ -87,7 +89,13 @@ class RepoScan:
         """
         self.root = root
         self.include_licenseignore = include_licenseignore
-        self.ignore_config = IgnoreConfig()
+        # Resolve .licenseignore relative to the scanned tree (self.root), the same
+        # scoping as the git ls-files call below -- NOT the process cwd. This keeps
+        # a caller that passes root= (to scan a clone without cd-ing into it) working:
+        # the repo's own .licenseignore is still honored. When root is "." (every
+        # current caller, which chdir's into the repo first) this is identical to the
+        # old bare ".licenseignore".
+        self.ignore_config = IgnoreConfig(os.path.join(self.root, ".licenseignore"))
 
         # git ls-files lists tracked files, respecting .gitignore, without
         # walking untracked build artifacts. Adding --others --exclude-standard

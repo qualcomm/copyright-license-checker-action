@@ -93,3 +93,28 @@ def test_init_py_is_enumerated(fake_ls_files):
     # __init__.py is still scanned (it is .py); README.md is excluded. The
     # license-optional tier only relaxes findings, it does not drop the file.
     assert RepoScan().get_files() == ["pkg/__init__.py", "pkg/mod.py"]
+
+
+def test_licenseignore_read_from_root_not_cwd(tmp_path, monkeypatch):
+    # .licenseignore must be resolved relative to the scanned tree (root=), NOT the
+    # process cwd. Put the .licenseignore in root_dir, run from a DIFFERENT cwd that
+    # has none, and confirm the pattern still excludes. (This uses the REAL
+    # IgnoreConfig -- it does not stub it -- so it exercises the file lookup.)
+    root_dir = tmp_path / "root"
+    other_dir = tmp_path / "other"
+    root_dir.mkdir()
+    other_dir.mkdir()
+    (root_dir / ".licenseignore").write_text("vendor/*\n", encoding="utf-8")
+    monkeypatch.chdir(other_dir)          # cwd has NO .licenseignore
+
+    # Stub only `git ls-files` (avoid needing a real repo); leave IgnoreConfig real.
+    def _run(cmd, **_kwargs):
+        return subprocess.CompletedProcess(
+            cmd, 0, stdout="vendor/skip.c\nsrc/keep.c\n", stderr="")
+    monkeypatch.setattr(subprocess, "run", _run)
+
+    repo = RepoScan(root=str(root_dir))
+    # vendor/skip.c is excluded by root's .licenseignore (found via root, not cwd);
+    # without the root-scoping fix, cwd has no .licenseignore so nothing is excluded.
+    assert repo.get_files() == ["src/keep.c"]
+    assert repo.get_ignored_files() == ["vendor/skip.c"]
