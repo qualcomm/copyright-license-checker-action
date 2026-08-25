@@ -5,15 +5,20 @@ import subprocess
 
 import pytest
 
-import scanner.full_repo as full_repo
+from scanner import full_repo
 from scanner.full_repo import RepoScan
+
+# pytest passes a fixture into a test as a same-named parameter, which pylint reads
+# as shadowing the module-level fixture (redefined-outer-name); the tiny IgnoreConfig
+# stub below trips too-few-public-methods. Both are idiomatic in a test module.
+# pylint: disable=redefined-outer-name,too-few-public-methods
 
 
 class _FakeIgnore:
     """IgnoreConfig stand-in that never excludes -- keeps these tests independent
     of any .licenseignore that happens to be in the working directory."""
 
-    def is_excluded(self, file_path):
+    def is_excluded(self, _file_path):
         return False
 
 

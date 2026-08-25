@@ -1,11 +1,6 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
-import os
-import subprocess
-
-from scanner.ignore_config import IgnoreConfig
-
 """
 Module to enumerate the source files of a working tree for a full-repo scan.
 
@@ -22,6 +17,11 @@ keyed two ways -- by extension (LICENSE_OPTIONAL_EXTENSIONS, e.g. .mk/.bp) and b
 filename (LICENSE_OPTIONAL_FILES, e.g. __init__.py). See FullScanner.run for the
 relaxed handling.
 """
+
+import os
+import subprocess
+
+from scanner.ignore_config import IgnoreConfig
 
 # Source file extensions the full-repo scan covers. Kept in sync with
 # LicenseChecker.is_source_file so both paths agree on what "source" means.
