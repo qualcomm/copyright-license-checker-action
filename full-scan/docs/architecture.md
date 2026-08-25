@@ -62,9 +62,9 @@ this action's repo.
 
 ```mermaid
 flowchart TD
-    A["full_scan.main()<br/>argv: repo_name, fail_on_findings"] --> B["resolve_license(repo_name)<br/>(scanner/license_resolver.py)"]
+    A["full_scan.main()<br/>argv: repo_name, fail_on_findings"] --> B["resolve_license_details(repo_name)<br/>(scanner/license_resolver.py)"]
     B --> N{"baseline established?<br/>(root license file OR config entry)"}
-    N -->|no → None| STOP["report_missing_root_license()<br/>'No Root-Level Licence Found'<br/>→ exit 1 if fail_on_findings else 0"]
+    N -->|no → None| STOP["report_missing_root_license()<br/>'License Not Conclusively Detected'<br/>/ 'No Root-Level Licence Found'<br/>→ exit 1 if fail_on_findings else 0"]
     N -->|yes| C{"license type?"}
     C -->|permissive| P["allowed = PERMISSIVE_LICENSES"]
     C -->|copyleft| Q["allowed = COPYLEFT_LICENSES"]
@@ -83,12 +83,20 @@ to a per-project config map. It deliberately distrusts scancode's low-confidence
 `proprietary-license` catch-all on the LICENSE file — scancode sometimes mis-detects a standard
 OSS LICENSE as proprietary, which would otherwise flag every compliant file in the repo.
 
-When the repo has **no root-level license file AND no config entry**, `resolve_license` returns
-`None` rather than a `BSD-3-Clause-Clear` default: the scan cannot establish a baseline, so
-`main()` aborts via `report_missing_root_license()` with the status **"No Root-Level Licence
-Found"** and performs no per-file analysis (exit 1 under `fail_on_findings`, else 0). The
-`BSD-3-Clause-Clear` default now applies only when a license file physically exists but could
-not be resolved.
+When it cannot establish a baseline, `resolve_license` returns `None` — there is **no
+fabricated `BSD-3-Clause-Clear` default** (the old `DEFAULT_LICENSE` and the `_looks_like_bsd3`
+heuristic were removed). `main()` then aborts via `report_missing_root_license()` and performs
+no per-file analysis (exit 1 under `fail_on_findings`, else 0). Two distinct no-baseline cases
+are reported:
+
+- a **non-empty** root license file is present but its license was not conclusively detected
+  (scancode did not recognize it and the repo is not configured) → **"License Not Conclusively
+  Detected"**;
+- the root license file is **empty**, or there is **no** root license file, and no config entry
+  → **"No Root-Level Licence Found"**.
+
+A real scancode detection is reported as its **actual SPDX id** (BSD variants are not normalized
+to a canonical BSD).
 
 ---
 
@@ -171,9 +179,12 @@ flowchart TD
 
 ## Exit behavior
 
-`fail_on_findings` defaults to `false` (report-only, always exits `0`) so a periodic scan of a
-legacy repository never unexpectedly breaks CI. Set it to `true` to make blocking findings fail
-the run (exit `1`).
+The **action input** `fail_on_findings` (`full-scan/action.yml`) defaults to `false`
+(report-only, always exits `0`) so a periodic scan of a legacy repository never unexpectedly
+breaks CI — this is the default consumers hit through the reusable action. Set it to `true` to
+make blocking findings fail the run (exit `1`). Note the underlying `full_scan.py` **CLI** arg
+defaults the other way (`true`), but the action always passes the input through explicitly, so
+the report-only default applies in CI.
 
 ## Relationship to the patch scan
 
