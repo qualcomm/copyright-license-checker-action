@@ -1,2 +1,2 @@
-scancode-toolkit==32.2.1
+scancode-toolkit==32.5.0
 pathspec==0.12.1
