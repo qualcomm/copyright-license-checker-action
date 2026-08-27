@@ -189,10 +189,11 @@ python scripts/jira_scan.py <ISSUE-KEY> [--url-field NAME_OR_ID] [--env-file PAT
   meaning as in `compare_tools.py`).
 - `--comment-limit N` — cap the length of **each** comment. `0` (default) uses
   `MAX_COMMENT_LENGTH` from the environment, else **16384** (the limit the OSSOPS Jira
-  enforces, matching qnaro). Findings render as a `File | Type | Issue` table (Type =
-  License/Copyright, one row per issue); the summary counts are always kept. When the findings
+  enforces, matching qnaro). Findings render as a `File | Type | Issue` table, **one row per
+  file** — a file's License/Copyright issues are clubbed into that row, with the Type and
+  Issue cells comma-joined; the summary counts are always kept. When the findings
   exceed the cap they **continue into more comments** (`part N of M`, up to 5), and only a
-  remainder beyond that is truncated with an explicit "N more issue(s) omitted" note.
+  remainder beyond that is truncated with an explicit "N more file(s) omitted" note.
 - `--comment-visibility-role ROLE` / `--comment-visibility-group GROUP` — restrict the posted
   comment so only the named Jira **project role** (e.g. `Developers`) or **group** can see it,
   via the comment's visibility field. Set at most one (a comment has a single visibility;

@@ -263,6 +263,34 @@ def test_parse_repo_url_invalid(url):
     assert js.parse_repo_url(url) is None
 
 
+# --- _finding_row ------------------------------------------------------------
+
+def test_finding_row_clubs_both_types():
+    row = js._finding_row("src/x.c", {
+        "license_issues": ["No license header found"],
+        "copyright_issues": ["No copyright statement found"]})
+    assert row == ("|{{src/x.c}}|License, Copyright|No license header found, "
+                   "No copyright statement found|")
+
+
+def test_finding_row_single_type_only():
+    row = js._finding_row("src/x.c", {"license_issues": [],
+                                      "copyright_issues": ["No copyright statement found"]})
+    assert row == "|{{src/x.c}}|Copyright|No copyright statement found|"
+
+
+def test_finding_row_no_issues_emits_nothing():
+    assert js._finding_row("src/x.c", {"license_issues": [], "copyright_issues": []}) is None
+    assert js._finding_row("src/x.c", {}) is None
+
+
+def test_finding_row_escapes_pipe_in_cells():
+    # A literal '|' in a path or message would end the cell early -> escaped.
+    row = js._finding_row("src/a|b.c", {
+        "license_issues": ["Incompatible license: A|B"], "copyright_issues": []})
+    assert row == "|{{src/a&#124;b.c}}|License|Incompatible license: A&#124;B|"
+
+
 # --- build_comment_parts -----------------------------------------------------
 
 def test_build_comment_parts_clean():
@@ -291,10 +319,15 @@ def test_build_comment_parts_renders_table():
     assert "*Skipped by .licenseignore:* 1" in body
     assert "h4. Blocking issues (1)" in body
     assert "h4. Warnings (1)" in body
-    # Table header + one row per issue, Type derived structurally.
+    # Table header + ONE row per file: a file's License/Copyright issues are clubbed
+    # into that row, Type derived structurally.
     assert "||File||Type||Issue||" in body
-    assert "|{{src/x.c}}|License|Incompatible license: GPL-2.0|" in body
-    assert "|{{src/x.c}}|Copyright|No copyright statement found|" in body
+    assert ("|{{src/x.c}}|License, Copyright|Incompatible license: GPL-2.0, "
+            "No copyright statement found|") in body
+    assert ("|{{src/y.c}}|License|Uncertain license, review manually: "
+            "LicenseRef-scancode-unknown|") in body
+    # The path is not repeated -- one row per file, not one per issue.
+    assert body.count("{{src/x.c}}") == 1
 
 
 def test_build_comment_parts_renders_license_reason():
@@ -337,7 +370,7 @@ def test_build_comment_parts_caps_and_truncates_remainder():
     assert len(parts) == js.MAX_COMMENT_PARTS
     assert all(len(p) <= limit for p in parts)
     assert "*Blocking files:* 400" in parts[0]       # summary count stays intact
-    assert "more issue(s) omitted" in parts[-1]
+    assert "more file(s) omitted" in parts[-1]
 
 
 # --- build_error_comment -----------------------------------------------------

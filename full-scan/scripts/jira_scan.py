@@ -12,7 +12,8 @@ repository link (e.g. https://github.com/qualcomm/time-services), this tool:
   3. Shallow-clones the repo and runs the full-repo scan against it (in-process, the
      same code path as full_scan.py -- see compare_tools.run_full_scan).
   4. Collects the findings/warnings.
-  5. Posts the results back onto the ticket as a `File | Type | Issue` table. If the
+  5. Posts the results back onto the ticket as a `File | Type | Issue` table, one row
+     per file (a file's License/Copyright issues are clubbed into that row). If the
      findings exceed Jira's comment size limit they continue across more comments
      ("part N of M"; bounded, then truncated). Validation/clone/scan failures are
      posted as an error comment.
@@ -448,19 +449,40 @@ def _esc_cell(text: str) -> str:
     return text.replace("|", "&#124;")
 
 
-def _finding_rows(path: str, entry: dict) -> list:
+def _finding_row(path: str, entry: dict):
     """
-    Render one file's issues as Jira table rows: |{{path}}|Type|Issue|.
+    Render ONE file's issues as a single Jira table row: |{{path}}|Type|Issue|.
 
-    Type is derived structurally from which list the issue came from (License vs
-    Copyright), not by parsing the message. One row per issue.
+    All of a file's issues are clubbed into that one row: the Type cell lists the
+    kinds present ("License, Copyright") and the Issue cell lists the messages in
+    the same order, both comma-joined. Type is derived structurally from which list
+    an issue came from, not by parsing the message. Returns None when the entry
+    carries no issues at all.
+    """
+    types = []
+    issues = []
+    if entry.get("license_issues"):
+        types.append("License")
+        issues.extend(entry["license_issues"])
+    if entry.get("copyright_issues"):
+        types.append("Copyright")
+        issues.extend(entry["copyright_issues"])
+    if not issues:
+        return None
+    cell_path = "{{" + _esc_cell(path) + "}}"
+    return f"|{cell_path}|{', '.join(types)}|{_esc_cell(', '.join(issues))}|"
+
+
+def _finding_rows(findings: dict) -> list:
+    """
+    Render a findings dict (path -> {license_issues, copyright_issues}) as table
+    rows, one row per file, paths sorted.
     """
     rows = []
-    cell_path = "{{" + _esc_cell(path) + "}}"
-    for issue in entry.get("license_issues", []):
-        rows.append(f"|{cell_path}|License|{_esc_cell(issue)}|")
-    for issue in entry.get("copyright_issues", []):
-        rows.append(f"|{cell_path}|Copyright|{_esc_cell(issue)}|")
+    for path in sorted(findings):
+        row = _finding_row(path, findings[path])
+        if row:
+            rows.append(row)
     return rows
 
 
@@ -513,7 +535,8 @@ def build_comment_parts(repo_name: str, license_id: str, flagged: dict, warning:
     Render the scan result as one or more Jira comment bodies, each <= `limit`.
 
     The summary (counts) is always kept intact at the top of the first part.
-    Findings render as `File | Type | Issue` tables (one row per issue). Rows are
+    Findings render as `File | Type | Issue` tables, one row per file (its
+    License/Copyright issues clubbed into comma-joined cells). Rows are
     packed greedily; when a part fills, the rest continue in the next part (the
     section heading + table header are re-emitted so every part is valid on its
     own). At most MAX_COMMENT_PARTS parts are produced -- any remainder is truncated
@@ -562,11 +585,11 @@ def build_comment_parts(repo_name: str, license_id: str, flagged: dict, warning:
     # re-emitted whenever the section continues into a new part.
     sections = []
     if flagged:
-        rows = [r for path in sorted(flagged) for r in _finding_rows(path, flagged[path])]
-        sections.append((f"h4. Blocking issues ({blocking_n})\n" + _TABLE_HEADER, rows))
+        sections.append((f"h4. Blocking issues ({blocking_n})\n" + _TABLE_HEADER,
+                         _finding_rows(flagged)))
     if warning:
-        rows = [r for path in sorted(warning) for r in _finding_rows(path, warning[path])]
-        sections.append((f"h4. Warnings ({warning_n})\n" + _TABLE_HEADER, rows))
+        sections.append((f"h4. Warnings ({warning_n})\n" + _TABLE_HEADER,
+                         _finding_rows(warning)))
     total_rows = sum(len(rows) for _, rows in sections)
 
     def _fits(current: str, extra: int) -> bool:
@@ -603,7 +626,7 @@ def build_comment_parts(repo_name: str, license_id: str, flagged: dict, warning:
     if truncated:
         omitted = total_rows - emitted
         current += (f"\n\n(Detail truncated to fit Jira's comment size limit; "
-                    f"{omitted} more issue(s) omitted. See the counts above.)")
+                    f"{omitted} more file(s) omitted. See the counts above.)")
     parts.append(current)
 
     total_parts = len(parts)
