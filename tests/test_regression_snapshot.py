@@ -17,66 +17,30 @@ adding a second mode leaves the default path untouched.
 
 import contextlib
 import io
-import json
-import os
 import sys
-import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch as mock_patch
+from unittest.mock import patch as mock_patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import main  # noqa: E402  pylint: disable=wrong-import-position
+from tests.scancode_mock import (  # noqa: E402  pylint: disable=wrong-import-position
+    TempCwdMixin,
+    scancode_mock_patcher,
+)
 from tests.static_data import patches  # noqa: E402  pylint: disable=wrong-import-position
 
 PROPRIETARY_LICENSE = "LicenseRef-scancode-proprietary-license"
 
 
-def install_scancode_mock(detections: dict):
-    """
-    Build a subprocess.run replacement that writes a scancode-shaped JSON
-    report, keyed by the filenames detect_licenses_batch scans.
-
-    Args:
-        detections: Maps scanned filename (e.g. '0_added.txt') to either an
-            SPDX expression string, or None for 'no license detected'.
-
-    Returns:
-        A mock.patch context manager for scanner.license_scancode.subprocess.run.
-    """
-
-    def fake_run(cmd, **_kwargs):
-        output_file = cmd[cmd.index("--json-pp") + 1]
-        files = []
-        for filename, expression in detections.items():
-            entry = {"path": filename, "type": "file", "license_detections": []}
-            if expression is not None:
-                entry["license_detections"] = [{"license_expression_spdx": expression}]
-            files.append(entry)
-        files.append({"path": ".", "type": "directory", "license_detections": []})
-        Path(output_file).write_text(json.dumps({"files": files}), encoding="utf-8")
-        return MagicMock(returncode=0)
-
-    return mock_patch("scanner.license_scancode.subprocess.run", side_effect=fake_run)
-
-
-class RegressionSnapshotTestCase(unittest.TestCase):
+class RegressionSnapshotTestCase(TempCwdMixin, unittest.TestCase):
     """
     Runs main() end-to-end (real Patch/LicenseChecker/CopyrightChecker, only
     scancode mocked) in a scratch directory with no LICENSE file, so each
     scenario exercises get_license()'s real default-fallback path against
     repo_name "org/repo" (which matches no scanner/config.py entry).
     """
-
-    def setUp(self):
-        """Run each test in a scratch directory, isolated from any real .licenseignore."""
-        # pylint: disable=consider-using-with
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        original_cwd = os.getcwd()
-        os.chdir(self.tmp.name)
-        self.addCleanup(os.chdir, original_cwd)
 
     def run_main(self, patch_content: str, detections: dict) -> tuple:
         """
@@ -95,7 +59,7 @@ class RegressionSnapshotTestCase(unittest.TestCase):
         argv = ["main.py", str(patch_path), "org/repo"]
 
         buffer = io.StringIO()
-        with install_scancode_mock(detections):
+        with scancode_mock_patcher(detections):
             with mock_patch.object(sys, "argv", argv):
                 with contextlib.redirect_stdout(buffer):
                     with self.assertRaises(SystemExit) as caught:
