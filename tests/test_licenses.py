@@ -49,9 +49,12 @@ class TestIsLicenseAllowed(unittest.TestCase):
         self.assertTrue(is_license_allowed("(MIT OR GPL-2.0-only)", PERMISSIVE_LICENSES))
         self.assertFalse(is_license_allowed("(GPL-2.0-only OR GPL-3.0-only)", PERMISSIVE_LICENSES))
 
-    def test_leading_or_group_preserves_existing_short_circuit(self):
-        self.assertTrue(
+    def test_leading_or_group_does_not_exempt_trailing_and_component(self):
+        self.assertFalse(
             is_license_allowed("(MIT OR GPL-2.0-only) AND GPL-3.0-only", PERMISSIVE_LICENSES)
+        )
+        self.assertTrue(
+            is_license_allowed("(MIT OR GPL-2.0-only) AND Apache-2.0", PERMISSIVE_LICENSES)
         )
 
     def test_unknown_license_is_not_allowed(self):
