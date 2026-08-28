@@ -1,3 +1,4 @@
+import argparse
 import logging
 import sys
 import os
@@ -326,6 +327,14 @@ def is_uncertain_license_issue(issue: str) -> bool:  # noqa: C901
     return all_uncertain
 
 
+def parse_args(argv: list) -> argparse.Namespace:
+    """Parse the patch path and repository name from command-line arguments."""
+    parser = argparse.ArgumentParser(description="Copyright and license compliance checker.")
+    parser.add_argument("patch_file", help="Path to the patch file to check.")
+    parser.add_argument("repo_name", help="The name of the GitHub repository.")
+    return parser.parse_args(argv)
+
+
 # TODO: exceeds team max-complexity=10, branch count, and local-variable count
 # (orchestrates license resolution, both checkers, and issue routing; revisit
 # extraction after proprietary mode lands and adds the mode-dispatch branches).
@@ -337,8 +346,9 @@ def main() -> None:  # noqa: C901
     # Clamp chatty logging from license_identifier
     logging.basicConfig(level=logging.WARNING)
 
-    patch = Patch(sys.argv[1])
-    repo_name = sys.argv[2]
+    args = parse_args(sys.argv[1:])
+    patch = Patch(args.patch_file)
+    repo_name = args.repo_name
     repo_license = get_license(repo_name)
     if repo_license in PERMISSIVE_LICENSES:
         allowed_licenses = PERMISSIVE_LICENSES
