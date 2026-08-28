@@ -5,57 +5,18 @@ import json
 import subprocess
 import tempfile
 from scanner import config
-from scanner.patch import Patch
-from scanner.license_scancode import LicenseChecker
 from scanner.copyright_checker import CopyrightChecker
+from scanner.license_scancode import LicenseChecker
+from scanner.licenses import (
+    COPYLEFT_LICENSES,
+    PERMISSIVE_LICENSES,
+    is_copyleft,
+    is_uncertain_expression,
+    split_license_components,
+)
+from scanner.patch import Patch
 
 LOG_PREFIX = "< file license/copyright check >"
-
-# Define a dictionary of permissive licenses
-PERMISSIVE_LICENSES = [
-    "BSD-3-Clause",
-    "MIT",
-    "Apache-1.0",
-    "Apache-1.1",
-    "Apache-2.0",
-    "BSD-3-Clause-Clear",
-    "FreeBSD-DOC",
-    "Zlib",
-    "BSD-1-Clause",
-    "BSD-2-Clause",
-    "BSD-2-Clause-first-lines",
-    "BSD-2-Clause-Views",
-    "BSD-3-Clause-Sun",
-    "BSD-4-Clause-Shortened",
-    "BSD-3-Clause-Attribution",
-    "BSD-4-Clause",
-    "ISC",
-    "CC0-1.0",
-    "ICU",
-    "LicenseRef-scancode-unicode",
-    "Apache-2.0 WITH LLVM-exception",
-    "Apache-2.0 WITH LLVM-exception AND Apache-2.0 AND LLVM-exception",
-]
-
-COPYLEFT_LICENSES = [
-    "GPL-1.0-only",
-    "GPL-1.0-or-later",
-    "GPL-2.0-only",
-    "GPL-2.0-or-later",
-    "GPL-3.0-only",
-    "GPL-3.0",
-    "GPL-3.0-or-later",
-    "AGPL-3.0",
-    "LGPL-3.0",
-    "GPL-2.0",
-    "GPL-2.0+",
-    "GPL-2.0-only WITH Linux-syscall-note",
-    "AGPL-1.0-only",
-    "AGPL-1.0-or-later",
-    "LicenseRef-scancode-agpl-2.0",
-    "AGPL-3.0-only",
-    "AGPL-3.0-or-later",
-]
 
 
 def detect_license_from_file(license_file_path: str) -> str:
@@ -290,40 +251,7 @@ def is_uncertain_license_issue(issue: str) -> bool:  # noqa: C901
         # For other issue types, check if it contains LicenseRef-scancode
         return "LicenseRef-scancode-" in issue
 
-    # Parse the license expression to check if ALL licenses are unknown/uncertain
-    # Remove parentheses and split by AND/OR
-    licenses = []
-    for part in license_expr.replace("(", "").replace(")", "").split(" AND "):
-        for lic in part.split(" OR "):
-            lic = lic.strip()
-            if lic:
-                licenses.append(lic)
-
-    # Check if all licenses are unknown/uncertain
-    if not licenses:
-        return False
-
-    # SPECIAL CASE: If the ONLY license is exactly
-    # "LicenseRef-scancode-proprietary-license", block it
-    if len(licenses) == 1 and licenses[0] == "LicenseRef-scancode-proprietary-license":
-        return False
-
-    # A license is considered uncertain if:
-    # 1. It starts with LicenseRef-scancode- AND
-    # 2. It's not in the known permissive list (like LicenseRef-scancode-unicode)
-    def is_uncertain_license(lic: str) -> bool:
-        if not lic.startswith("LicenseRef-scancode-"):
-            return False
-        # Check if it's a known permissive LicenseRef
-        if lic in PERMISSIVE_LICENSES:
-            return False
-        return True
-
-    # If ALL licenses are uncertain, it's a warning
-    # If ANY license is a known incompatible license (like GPL), it's an error
-    all_uncertain = all(is_uncertain_license(lic) for lic in licenses)
-
-    return all_uncertain
+    return is_uncertain_expression(license_expr)
 
 
 # TODO: exceeds team max-complexity=10, branch count, and local-variable count
@@ -342,17 +270,11 @@ def main() -> None:  # noqa: C901
     repo_license = get_license(repo_name)
     if repo_license in PERMISSIVE_LICENSES:
         allowed_licenses = PERMISSIVE_LICENSES
-    elif repo_license in COPYLEFT_LICENSES:
+    elif is_copyleft(repo_license):
         allowed_licenses = COPYLEFT_LICENSES
     else:
         # Handle complex license expressions (e.g., "GPL-2.0-only AND GPL-2.0-or-later")
-        # Parse the expression and include all component licenses
-        allowed_licenses = []
-        for part in repo_license.replace("(", "").replace(")", "").split(" AND "):
-            for lic in part.split(" OR "):
-                lic = lic.strip()
-                if lic:
-                    allowed_licenses.append(lic)
+        allowed_licenses = split_license_components(repo_license)
 
         # If no licenses were parsed, use the original license
         if not allowed_licenses:

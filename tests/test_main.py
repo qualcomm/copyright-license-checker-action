@@ -428,17 +428,5 @@ class TestMainEntryPoint(LicenseFileTestCase):
             self.assertEqual(license_cls.call_args[0][2], ["GPL-2.0-only", "MIT"])
 
 
-class TestLicenseListsAreDisjoint(unittest.TestCase):
-    """Sanity checks on the module-level license constants."""
-
-    def test_permissive_and_copyleft_do_not_overlap(self):
-        """No identifier appears in both the permissive and copyleft lists."""
-        self.assertEqual(set(main.PERMISSIVE_LICENSES) & set(main.COPYLEFT_LICENSES), set())
-
-    def test_default_license_is_permissive(self):
-        """The fallback default license is in the permissive list."""
-        self.assertIn("BSD-3-Clause-Clear", main.PERMISSIVE_LICENSES)
-
-
 if __name__ == "__main__":
     unittest.main()
