@@ -231,9 +231,8 @@ class TestRunLicenseRules(ScancodeMockMixin, unittest.TestCase):
 
 class TestRunChangeTypeCoverageGaps(ScancodeMockMixin, unittest.TestCase):
     """
-    Documents pre-existing gaps: license rules apply only to MODIFIED and ADDED
-    changes. DELETED and RENAMED changes are never license-checked. These assert
-    current behavior, not desired behavior.
+    Whole-file deletions and pure renames are not license-checked. Renamed
+    files carrying content changes receive the same checks as modifications.
     """
 
     def test_deleted_change_type_is_not_license_checked(self):
@@ -247,7 +246,7 @@ class TestRunChangeTypeCoverageGaps(ScancodeMockMixin, unittest.TestCase):
         self.assertEqual(checker.run(), {})
 
     def test_renamed_change_type_is_not_license_checked(self):
-        """RENAMED changes are not license-checked."""
+        """Pure RENAMED changes are not license-checked."""
         self.install_scancode_mock({"0_deleted.txt": "MIT"})
         checker = LicenseChecker(
             make_patch_obj([make_change("-MIT text\n", change_type="RENAMED")]),

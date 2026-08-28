@@ -144,13 +144,18 @@ The action allows the following copyright transition:
 
 ## Change-Type Coverage
 
-License and copyright checks apply to added and modified files. A whole-file
-deletion is intentionally not treated as a license or copyright-removal
-violation because the file and its contents are no longer present.
+License checks (scenarios 1-4 above) apply to `ADDED`, `MODIFIED`, and
+`RENAMED_MODIFIED` changes. Copyright deletion checks (scenario 5 above)
+apply to `MODIFIED` and `RENAMED_MODIFIED` changes.
 
-Pure renames are not checked because they contain no content changes. A rename
-that includes diff hunks is treated as a modification and receives the normal
-license and copyright checks for modified files.
+A whole-file `DELETED` change is intentionally not treated as a license or
+copyright-removal violation because the file and its contents are no longer
+present. `ADDED` changes cannot remove a prior copyright notice because there
+is no prior file version.
+
+Pure `RENAMED` changes are not checked because they contain no content
+changes. A rename that includes diff hunks is treated as `RENAMED_MODIFIED`
+and receives the normal license and copyright checks for modified files.
 
 ---
 
