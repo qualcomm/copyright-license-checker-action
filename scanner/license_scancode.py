@@ -9,6 +9,7 @@ import warnings
 import os
 from pathlib import Path
 
+from scanner.copyright_checker import DEFAULT_INTERNAL_ENTITIES
 from scanner.file_types import SOURCE_EXTENSIONS
 from scanner.licenses import is_license_allowed, is_uncertain_expression
 from scanner.patch import Patch
@@ -29,16 +30,29 @@ class LicenseChecker:
     Class to check for licenses in a patch file.
     """
 
-    def __init__(self, patch: Patch, permissive_licenses: list) -> None:
+    def __init__(
+        self,
+        patch: Patch,
+        permissive_licenses: list,
+        mode: str = "opensource",
+        proprietary_entities: list | None = None,
+    ) -> None:
         """
         Initialize the LicenseChecker object.
 
         Args:
             patch (Patch): The patch file to check.
             permissive_licenses (list): A list of permissive licenses.
+            mode (str): "opensource" (default) or "proprietary".
+            proprietary_entities (list): Copyright-holder substrings treated
+                as internal authorship in proprietary mode.
         """
         self.patch = patch
         self.permissive_licenses = permissive_licenses
+        self.mode = mode
+        self.proprietary_entities = (
+            proprietary_entities if proprietary_entities is not None else DEFAULT_INTERNAL_ENTITIES
+        )
 
     # TODO: exceeds team max-complexity=10 and local-variable count (batches
     # added/deleted line groups across all changes into one scancode

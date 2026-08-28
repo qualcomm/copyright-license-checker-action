@@ -116,12 +116,73 @@ class TestParseArgs(unittest.TestCase):
         self.assertEqual(args.patch_file, "pr.patch")
         self.assertEqual(args.repo_name, "org/repo")
 
+    def test_mode_defaults_to_opensource(self):
+        """With no --mode flag, mode defaults to opensource."""
+        args = main.parse_args(["pr.patch", "org/repo"])
+        self.assertEqual(args.mode, "opensource")
+
+    def test_mode_accepts_proprietary(self):
+        """--mode proprietary is accepted."""
+        args = main.parse_args(["pr.patch", "org/repo", "--mode", "proprietary"])
+        self.assertEqual(args.mode, "proprietary")
+
+    def test_invalid_mode_exits(self):
+        """An unrecognized --mode value fails through argparse."""
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                main.parse_args(["pr.patch", "org/repo", "--mode", "bogus"])
+        self.assertEqual(caught.exception.code, 2)
+
+    def test_proprietary_entities_defaults_to_empty_string(self):
+        """With no flag, proprietary_entities defaults to an empty string."""
+        args = main.parse_args(["pr.patch", "org/repo"])
+        self.assertEqual(args.proprietary_entities, "")
+
+    def test_proprietary_entities_is_captured(self):
+        """--proprietary-entities is captured verbatim for later parsing."""
+        args = main.parse_args(
+            ["pr.patch", "org/repo", "--proprietary-entities", "Acme Robotics,Other Co"]
+        )
+        self.assertEqual(args.proprietary_entities, "Acme Robotics,Other Co")
+
     def test_missing_positional_exits(self):
         """Omitting a required positional argument fails through argparse."""
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit) as caught:
                 main.parse_args(["pr.patch"])
         self.assertEqual(caught.exception.code, 2)
+
+
+class TestResolveInternalEntities(unittest.TestCase):
+    """resolve_internal_entities builds the entity list passed to LicenseChecker."""
+
+    def test_empty_string_returns_only_defaults(self):
+        """An empty proprietary_entities value returns just the built-in defaults."""
+        self.assertEqual(main.resolve_internal_entities(""), main.DEFAULT_INTERNAL_ENTITIES)
+
+    def test_extra_entities_are_appended(self):
+        """
+        User-supplied entities are appended after the defaults. Entity names
+        must not contain commas, since that is the field separator.
+        """
+        result = main.resolve_internal_entities("Acme Robotics,Other Co")
+        self.assertEqual(result, main.DEFAULT_INTERNAL_ENTITIES + ["Acme Robotics", "Other Co"])
+
+    def test_whitespace_around_entries_is_stripped(self):
+        """Surrounding whitespace on each comma-separated entry is stripped."""
+        result = main.resolve_internal_entities("  Acme Robotics , Other Co  ")
+        self.assertEqual(result, main.DEFAULT_INTERNAL_ENTITIES + ["Acme Robotics", "Other Co"])
+
+    def test_blank_entries_are_dropped(self):
+        """A trailing comma or blank entry does not produce an empty string entity."""
+        result = main.resolve_internal_entities("Acme Robotics,,")
+        self.assertEqual(result, main.DEFAULT_INTERNAL_ENTITIES + ["Acme Robotics"])
+
+    def test_does_not_mutate_the_default_list(self):
+        """The returned list is a new object; DEFAULT_INTERNAL_ENTITIES is untouched."""
+        original = list(main.DEFAULT_INTERNAL_ENTITIES)
+        main.resolve_internal_entities("Acme Robotics")
+        self.assertEqual(main.DEFAULT_INTERNAL_ENTITIES, original)
 
 
 class TestBeautifyOutput(unittest.TestCase):
@@ -371,6 +432,11 @@ class TestMainEntryPoint(LicenseFileTestCase):
                     with self.assertRaises(SystemExit):
                         main.main()
             self.assertEqual(license_cls.call_args[0][1], main.PERMISSIVE_LICENSES)
+            self.assertEqual(license_cls.call_args.kwargs["mode"], "opensource")
+            self.assertEqual(
+                license_cls.call_args.kwargs["proprietary_entities"],
+                main.DEFAULT_INTERNAL_ENTITIES,
+            )
 
     def test_copyleft_repo_gets_copyleft_allowed_list(self):
         """A copyleft repo license selects the copyleft allowed list."""
@@ -403,6 +469,37 @@ class TestMainEntryPoint(LicenseFileTestCase):
                     with self.assertRaises(SystemExit):
                         main.main()
             self.assertEqual(license_cls.call_args[0][1], ["GPL-2.0-only", "MIT"])
+
+    def test_proprietary_mode_uses_permissive_baseline_without_license_lookup(self):
+        """Proprietary mode skips repo LICENSE lookup and uses the canonical permissive list."""
+        with (
+            mock_patch("main.get_license") as get_license,
+            mock_patch("main.Patch"),
+            mock_patch("main.CopyrightChecker") as copyright_cls,
+            mock_patch("main.LicenseChecker") as license_cls,
+        ):
+            license_cls.return_value.run.return_value = ({}, {})
+            copyright_cls.return_value.run.return_value = {}
+            argv = [
+                "main.py",
+                "pr.patch",
+                "org/repo",
+                "--mode",
+                "proprietary",
+                "--proprietary-entities",
+                "Acme Robotics",
+            ]
+            with mock_patch.object(sys, "argv", argv):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    with self.assertRaises(SystemExit):
+                        main.main()
+            get_license.assert_not_called()
+            self.assertEqual(license_cls.call_args[0][1], main.PERMISSIVE_LICENSES)
+            self.assertEqual(license_cls.call_args.kwargs["mode"], "proprietary")
+            self.assertEqual(
+                license_cls.call_args.kwargs["proprietary_entities"],
+                main.DEFAULT_INTERNAL_ENTITIES + ["Acme Robotics"],
+            )
 
 
 if __name__ == "__main__":
