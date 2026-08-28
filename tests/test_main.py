@@ -1,8 +1,8 @@
 """
 Tests for the helper functions in main.py.
 
-Covers repository license resolution (LICENSE file scan, config fallback and
-default) and the warning-vs-error classification of uncertain licenses.
+Covers repository license resolution, command-line parsing, report rendering,
+and the main entry point wiring.
 """
 
 import contextlib
@@ -106,87 +106,6 @@ class TestGetLicense(LicenseFileTestCase):
             self.assertTrue(detect.called)
 
 
-class TestIsUncertainLicenseIssue(unittest.TestCase):
-    """Classification of license issues as uncertain (warning) or real (error)."""
-
-    def test_unknown_license_is_uncertain(self):
-        """A lone scancode 'unknown' reference is a warning."""
-        self.assertTrue(
-            main.is_uncertain_license_issue(
-                "Incompatible license added: LicenseRef-scancode-unknown-license-reference"
-            )
-        )
-
-    def test_gpl_is_not_uncertain(self):
-        """A known copyleft license is an error, not a warning."""
-        self.assertFalse(
-            main.is_uncertain_license_issue("Incompatible license added: GPL-2.0-only")
-        )
-
-    def test_mixed_unknown_and_gpl_is_not_uncertain(self):
-        """Any recognized incompatible license in the expression forces an error."""
-        issue = (
-            "Incompatible license added: GPL-2.0-only AND "
-            "LicenseRef-scancode-unknown-license-reference"
-        )
-        self.assertFalse(main.is_uncertain_license_issue(issue))
-
-    def test_all_uncertain_components_is_uncertain(self):
-        """An expression made only of uncertain references is a warning."""
-        issue = (
-            "Incompatible license added: LicenseRef-scancode-unknown-license-reference AND "
-            "LicenseRef-scancode-warranty-disclaimer"
-        )
-        self.assertTrue(main.is_uncertain_license_issue(issue))
-
-    def test_solitary_proprietary_license_is_not_uncertain(self):
-        """
-        A lone proprietary-license detection is a blocking error today. Proprietary
-        mode will make this mode-aware; this test pins the current behavior.
-        """
-        self.assertFalse(
-            main.is_uncertain_license_issue(
-                "Incompatible license added: LicenseRef-scancode-proprietary-license"
-            )
-        )
-
-    def test_proprietary_mixed_with_unknown_is_uncertain(self):
-        """Mixed with other uncertain references, proprietary becomes a warning."""
-        issue = (
-            "Incompatible license added: LicenseRef-scancode-proprietary-license AND "
-            "LicenseRef-scancode-unknown-license-reference"
-        )
-        self.assertTrue(main.is_uncertain_license_issue(issue))
-
-    def test_license_change_issue_examines_added_license(self):
-        """For a change issue, only the added license decides the outcome."""
-        self.assertTrue(
-            main.is_uncertain_license_issue(
-                "License deleted: MIT and license added: LicenseRef-scancode-unknown"
-            )
-        )
-        self.assertFalse(
-            main.is_uncertain_license_issue("License deleted: MIT and license added: GPL-2.0-only")
-        )
-
-    def test_permissive_licenseref_is_not_uncertain(self):
-        """A LicenseRef that appears in the permissive list is not uncertain."""
-        self.assertFalse(
-            main.is_uncertain_license_issue(
-                "Incompatible license added: LicenseRef-scancode-unicode"
-            )
-        )
-
-    def test_other_issue_types_match_on_substring(self):
-        """Issues that are neither add nor change fall back to a substring check."""
-        self.assertTrue(
-            main.is_uncertain_license_issue("License deleted: LicenseRef-scancode-unknown")
-        )
-        self.assertFalse(
-            main.is_uncertain_license_issue("No license added for source file: src/foo.c")
-        )
-
-
 class TestParseArgs(unittest.TestCase):
     """Tests for the command-line interface used by the action."""
 
@@ -283,21 +202,28 @@ class TestMainEntryPoint(LicenseFileTestCase):
     list, run both checkers and route issues into blocking vs. warning buckets.
     """
 
-    def run_main(self, argv: list, license_issues: dict, copyright_issues: dict):
+    def run_main(
+        self,
+        argv: list,
+        license_issues: dict,
+        copyright_issues: dict,
+        license_warning_issues: dict = None,
+    ):
         """
         Run main() with both checkers stubbed out.
 
         Args:
             argv: Replacement sys.argv.
-            license_issues: Return value for LicenseChecker.run().
+            license_issues: Blocking half of LicenseChecker.run()'s return value.
             copyright_issues: Return value for CopyrightChecker.run().
+            license_warning_issues: Warning half of LicenseChecker.run()'s return value.
 
         Returns:
             Tuple of (captured stdout, exit code).
         """
         buffer = io.StringIO()
         license_checker = MagicMock()
-        license_checker.run.return_value = license_issues
+        license_checker.run.return_value = (license_issues, license_warning_issues or {})
         copyright_checker = MagicMock()
         copyright_checker.run.return_value = copyright_issues
 
@@ -326,19 +252,29 @@ class TestMainEntryPoint(LicenseFileTestCase):
         )
         self.assertEqual(code, 1)
 
-    def test_uncertain_license_issue_is_a_warning(self):
-        """An uncertain license issue is routed to warnings and exits 0."""
+    def test_license_warning_exits_zero(self):
+        """A checker-supplied warning is rendered without failing the action."""
         output, code = self.run_main(
             ["main.py", "pr.patch", "org/repo"],
+            {},
+            {},
             {
                 "src/a.c": [
                     "Incompatible license added: LicenseRef-scancode-unknown-license-reference"
                 ]
             },
-            {},
         )
         self.assertEqual(code, 0)
         self.assertIn("W A R N I N G S", output)
+
+    def test_blocking_issue_is_not_reclassified_from_its_message(self):
+        """main() honors checker severity instead of inspecting license prose."""
+        _, code = self.run_main(
+            ["main.py", "pr.patch", "org/repo"],
+            {"src/a.c": ["License deleted: LicenseRef-scancode-unknown-license-reference"]},
+            {},
+        )
+        self.assertEqual(code, 1)
 
     def test_copyright_issue_blocks(self):
         """A copyright deletion is always a blocking issue."""
@@ -392,7 +328,7 @@ class TestMainEntryPoint(LicenseFileTestCase):
             mock_patch("main.CopyrightChecker") as copyright_cls,
             mock_patch("main.LicenseChecker") as license_cls,
         ):
-            license_cls.return_value.run.return_value = {}
+            license_cls.return_value.run.return_value = ({}, {})
             copyright_cls.return_value.run.return_value = {}
             with mock_patch.object(sys, "argv", ["main.py", "pr.patch", "org/repo"]):
                 with contextlib.redirect_stdout(io.StringIO()):
@@ -408,7 +344,7 @@ class TestMainEntryPoint(LicenseFileTestCase):
             mock_patch("main.CopyrightChecker") as copyright_cls,
             mock_patch("main.LicenseChecker") as license_cls,
         ):
-            license_cls.return_value.run.return_value = {}
+            license_cls.return_value.run.return_value = ({}, {})
             copyright_cls.return_value.run.return_value = {}
             with mock_patch.object(sys, "argv", ["main.py", "pr.patch", "org/repo"]):
                 with contextlib.redirect_stdout(io.StringIO()):
@@ -424,7 +360,7 @@ class TestMainEntryPoint(LicenseFileTestCase):
             mock_patch("main.CopyrightChecker") as copyright_cls,
             mock_patch("main.LicenseChecker") as license_cls,
         ):
-            license_cls.return_value.run.return_value = {}
+            license_cls.return_value.run.return_value = ({}, {})
             copyright_cls.return_value.run.return_value = {}
             with mock_patch.object(sys, "argv", ["main.py", "pr.patch", "org/repo"]):
                 with contextlib.redirect_stdout(io.StringIO()):
