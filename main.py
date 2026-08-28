@@ -301,7 +301,7 @@ def main() -> None:
     repo_name = args.repo_name
     repo_license, allowed_licenses = resolve_allowed_licenses(repo_name)
 
-    license_checker = LicenseChecker(patch, repo_name, allowed_licenses)
+    license_checker = LicenseChecker(patch, allowed_licenses)
     copyright_checker = CopyrightChecker(patch)
 
     flagged_license_files, warning_license_files = license_checker.run()

@@ -58,13 +58,15 @@ The action checks for any changes in copyright statements within the code and fl
 The action identifies source files based on their extensions and ensures that appropriate licenses are added to new source files as per repository's policies
 
 ```text
-'.c', '.cpp', '.h', '.hpp', '.java', '.py', '.js', '.ts', '.rb', '.go', '.swift', '.kt', '.kts'
+'.c', '.cpp', '.h', '.hpp', '.java', '.py', '.js', '.ts', '.rb', '.go', '.swift', '.kt', '.kts', '.sh'
 ```
 
 **Excluded File Types**: The following file types are automatically excluded from all license and copyright checks:
 - `.md` (Markdown documentation files)
 - `.patch` (Patch files)
 - `.bb` (BitBake recipe files)
+- `.json` (JSON files)
+- `.yml` (YAML files)
 
 ### Compliance Reporting
 The action provides a detailed report with two categories:

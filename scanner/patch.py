@@ -4,6 +4,7 @@ Module to represent and process patch files.
 
 import re
 
+from scanner.file_types import EXCLUDED_EXTENSIONS
 from scanner.ignore_config import IgnoreConfig
 
 
@@ -55,7 +56,7 @@ class Patch:
             file_type = "binary" if "GIT binary patch" in file_change else "source"
 
             # Skip files that match hardcoded exclusions or config-based exclusions
-            if path_name.endswith((".patch", ".bb", ".md", ".json", ".yml")):
+            if path_name.endswith(EXCLUDED_EXTENSIONS):
                 continue
 
             if self.ignore_config.is_excluded(path_name):
