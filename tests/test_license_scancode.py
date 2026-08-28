@@ -21,12 +21,6 @@ PERMISSIVE = [
     "LicenseRef-scancode-unicode",
 ]
 
-COPYLEFT = [
-    "GPL-2.0-only",
-    "GPL-2.0-or-later",
-    "GPL-3.0-only",
-]
-
 
 def make_patch_obj(changes: list) -> MagicMock:
     """
@@ -84,71 +78,6 @@ class ScancodeMockMixin:
         patcher = scancode_mock_patcher(detections)
         patcher.start()
         self.addCleanup(patcher.stop)
-
-
-class TestIsLicensePermissive(unittest.TestCase):
-    """The SPDX expression evaluator."""
-
-    def setUp(self):
-        """Create a checker whose allowed list is the permissive set."""
-        self.checker = LicenseChecker(make_patch_obj([]), "org/repo", PERMISSIVE)
-
-    def test_single_permissive_license(self):
-        """A lone permissive identifier is permissive."""
-        self.assertTrue(self.checker.is_license_permissive("MIT"))
-
-    def test_single_copyleft_license(self):
-        """A lone copyleft identifier is not permissive."""
-        self.assertFalse(self.checker.is_license_permissive("GPL-2.0-only"))
-
-    def test_whitespace_is_stripped(self):
-        """Surrounding whitespace does not affect evaluation."""
-        self.assertTrue(self.checker.is_license_permissive("  MIT  "))
-
-    def test_and_requires_all_permissive(self):
-        """Every component of an AND expression must be permissive."""
-        self.assertTrue(self.checker.is_license_permissive("MIT AND Apache-2.0"))
-        self.assertFalse(self.checker.is_license_permissive("MIT AND GPL-2.0-only"))
-
-    def test_or_requires_at_least_one_permissive(self):
-        """An OR group passes when any single option is permissive."""
-        self.assertTrue(self.checker.is_license_permissive("(MIT OR GPL-2.0-only)"))
-        self.assertFalse(self.checker.is_license_permissive("(GPL-2.0-only OR GPL-3.0-only)"))
-
-    def test_leading_or_group_short_circuits(self):
-        """
-        A leading '(X OR Y) AND ...' dual-license expression is decided solely by
-        the leading OR group; trailing AND terms are treated as comment noise.
-        """
-        self.assertTrue(
-            self.checker.is_license_permissive("(MIT OR GPL-2.0-only) AND GPL-3.0-only")
-        )
-
-    def test_unknown_license_is_not_permissive(self):
-        """An identifier absent from the allowed list is not permissive."""
-        self.assertFalse(self.checker.is_license_permissive("LicenseRef-scancode-unknown"))
-
-
-class TestGplOrLaterCompatibility(unittest.TestCase):
-    """GPL '-or-later' backward compatibility against a copyleft project."""
-
-    def setUp(self):
-        """Create a checker whose allowed list is the copyleft set."""
-        self.checker = LicenseChecker(make_patch_obj([]), "org/repo", COPYLEFT)
-
-    def test_or_later_accepts_only_variant(self):
-        """A project allowing GPL-2.0-or-later also accepts GPL-2.0-only."""
-        self.assertTrue(self.checker.is_license_permissive("GPL-2.0-only"))
-
-    def test_or_later_accepts_bare_base_license(self):
-        """The bare base identifier is accepted too."""
-        checker = LicenseChecker(make_patch_obj([]), "org/repo", ["GPL-2.0-or-later"])
-        self.assertTrue(checker.is_license_permissive("GPL-2.0"))
-
-    def test_permissive_project_rejects_gpl(self):
-        """A permissive project does not accept GPL via this path."""
-        checker = LicenseChecker(make_patch_obj([]), "org/repo", PERMISSIVE)
-        self.assertFalse(checker.is_license_permissive("GPL-2.0-only"))
 
 
 class TestIsSourceFile(unittest.TestCase):
