@@ -80,19 +80,10 @@ def is_copyleft(license_id: str) -> bool:
     return license_id in COPYLEFT_LICENSES
 
 
-# TODO: SPDX expression evaluation exceeds the configured complexity limits.
-# The leading-OR special case is existing behavior and is fixed separately.
-def is_license_allowed(expression: str, allowed_licenses: list) -> bool:  # noqa: C901
+def is_license_allowed(expression: str, allowed_licenses: list) -> bool:
     """Return whether an SPDX expression is compatible with an allowed list."""
-    # pylint: disable=too-many-branches,too-many-nested-blocks
-    expression = expression.strip()
-
-    if expression.startswith("(") and " OR " in expression.split(")")[0]:
-        or_part = expression.split(")")[0] + ")"
-        or_licenses = [license_id.strip() for license_id in or_part.strip("()").split(" OR ")]
-        return any(license_id in allowed_licenses for license_id in or_licenses)
-
-    and_groups = [group.strip() for group in expression.split(" AND ")]
+    # pylint: disable=too-many-nested-blocks
+    and_groups = [group.strip() for group in expression.strip().split(" AND ")]
     for and_group in and_groups:
         if " OR " in and_group:
             or_licenses = [license_id.strip() for license_id in and_group.strip("()").split(" OR ")]
