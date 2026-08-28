@@ -178,9 +178,11 @@ class TestAllowedTransitions(unittest.TestCase):
 
 class TestChangeTypeCoverageGaps(unittest.TestCase):
     """
-    Documents pre-existing coverage gaps: only MODIFIED changes are checked for
-    copyright deletions. ADDED, DELETED and RENAMED changes are not. These tests
-    assert current behavior rather than desired behavior.
+    Only MODIFIED changes are checked for copyright deletions. DELETED is a
+    deliberate exemption (see COMPLIANCE.md's Known Limitations): the file's
+    copyright is gone along with the file. ADDED can't have a deletion because
+    there is no prior version. RENAMED is a known, not-yet-fixed gap: a rename
+    that also modifies content should be checked like a MODIFIED change but is not.
     """
 
     def test_added_change_type_is_not_copyright_checked(self):

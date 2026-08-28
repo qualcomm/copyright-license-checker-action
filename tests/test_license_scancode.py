@@ -221,9 +221,11 @@ class TestRunLicenseRules(ScancodeMockMixin, unittest.TestCase):
 
 class TestRunChangeTypeCoverageGaps(ScancodeMockMixin, unittest.TestCase):
     """
-    Documents pre-existing gaps: license rules apply only to MODIFIED and ADDED
-    changes. DELETED and RENAMED changes are never license-checked. These assert
-    current behavior, not desired behavior.
+    License rules apply only to MODIFIED and ADDED changes. DELETED is a
+    deliberate exemption (see COMPLIANCE.md's Known Limitations): a deleted
+    file's license no longer applies to anything. RENAMED is a known,
+    not-yet-fixed gap: a rename that also modifies content should be checked
+    like a MODIFIED change but is not.
     """
 
     def test_deleted_change_type_is_not_license_checked(self):

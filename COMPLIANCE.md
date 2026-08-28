@@ -142,6 +142,22 @@ The action allows the following copyright transition:
 
 ---
 
+## Known Limitations
+
+### Deleted and Renamed Files Are Not License-Checked
+
+License checks (scenarios 1-4 above) only apply to `ADDED` and `MODIFIED` changes. A `DELETED` change is intentionally not checked: the file's license no longer applies to anything once the file is gone, so there is nothing to flag.
+
+A `RENAMED` change is currently not checked either, including when the rename carries a content diff, meaning the file was renamed and modified in the same change. That combined case should be checked the same as a `MODIFIED` change would be, but is not yet. This is a known gap, not an intended exemption, and is tracked as future work.
+
+### Only Modified Changes Get a Copyright-Deletion Check
+
+Copyright deletion (scenario 5 above) is only checked for `MODIFIED` changes. This is intentional for `DELETED` changes, for the same reason as the license check above: the file's copyright notice is gone along with the file, which is not a compliance issue. It does not apply to `ADDED` changes, since there is no prior version to have deleted a copyright from.
+
+`RENAMED` changes are not checked, including a rename that also modifies content. As with the license-check gap above, a renamed-and-modified file should be checked for copyright deletions the same as a plain modification would be. This is a known gap to be addressed in a future change, not a deliberate exemption.
+
+---
+
 ## Non-Blocking Warnings
 
 The following scenarios generate **WARNINGS** but do NOT block the build:
