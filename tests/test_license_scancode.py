@@ -6,8 +6,11 @@ subprocess.run and the JSON file it writes. That keeps the suite fast and avoids
 depending on the multi-hundred-megabyte scancode-toolkit package.
 """
 
+import json
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock
+from unittest.mock import patch as mock_patch
 
 from scanner.license_scancode import LicenseChecker
 from tests.scancode_mock import scancode_mock_patcher
@@ -138,6 +141,30 @@ class TestDetectLicensesBatch(ScancodeMockMixin, unittest.TestCase):
         checker = LicenseChecker(make_patch_obj([]), "org/repo", PERMISSIVE)
         results = checker.detect_licenses_batch([make_change("+just some code\n")])
         self.assertFalse(results.get((0, "added")))
+
+    def test_multiple_changes_share_a_single_subprocess_call(self):
+        """
+        All changes are batched into one scancode invocation, not one
+        subprocess.run per change.
+        """
+
+        def fake_run(cmd, **_kwargs):
+            output_file = cmd[cmd.index("--json-pp") + 1]
+            Path(output_file).write_text(json.dumps({"files": []}), encoding="utf-8")
+            return MagicMock(returncode=0)
+
+        checker = LicenseChecker(make_patch_obj([]), "org/repo", PERMISSIVE)
+        with mock_patch(
+            "scanner.license_scancode.subprocess.run", side_effect=fake_run
+        ) as run_mock:
+            checker.detect_licenses_batch(
+                [
+                    make_change("+MIT text\n"),
+                    make_change("+Apache text\n"),
+                    make_change("-BSD text\n"),
+                ]
+            )
+        self.assertEqual(run_mock.call_count, 1)
 
 
 class TestRunLicenseRules(ScancodeMockMixin, unittest.TestCase):
