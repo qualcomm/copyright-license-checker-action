@@ -7,9 +7,7 @@ default) and the warning-vs-error classification of uncertain licenses.
 
 import contextlib
 import io
-import os
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch as mock_patch
@@ -17,21 +15,11 @@ from unittest.mock import MagicMock, patch as mock_patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import main  # noqa: E402  pylint: disable=wrong-import-position
+from tests.scancode_mock import TempCwdMixin  # noqa: E402  pylint: disable=wrong-import-position
 
 
-class LicenseFileTestCase(unittest.TestCase):
+class LicenseFileTestCase(TempCwdMixin, unittest.TestCase):
     """Base case that runs each test inside a scratch working directory."""
-
-    def setUp(self):
-        """Change into a temporary directory so LICENSE lookups are isolated."""
-        # pylint: disable=consider-using-with
-        # A `with` block can't span setUp/tearDown; addCleanup is the correct
-        # unittest idiom for scoping a TemporaryDirectory to the test lifetime.
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        original_cwd = os.getcwd()
-        os.chdir(self.tmp.name)
-        self.addCleanup(os.chdir, original_cwd)
 
 
 class TestDetectLicenseFromFile(LicenseFileTestCase):
