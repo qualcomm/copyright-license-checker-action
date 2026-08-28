@@ -6,6 +6,19 @@ import re
 
 from scanner.patch import Patch
 
+# Copyright-bearing added/deleted lines, shared by detect_copyright_changes and
+# has_internal_copyright so both extract lines the same way.
+_ADDED_COPYRIGHT_PATTERN = r"^\+.*Copyright.*"
+_DELETED_COPYRIGHT_PATTERN = r"^-.*Copyright.*"
+
+# Default copyright-holder substrings recognized as internal in proprietary mode.
+# Keep this independent from _check_allowed_transitions, which matches one
+# specific QUIC -> QTI statement pair.
+DEFAULT_INTERNAL_ENTITIES = [
+    "Qualcomm Technologies, Inc.",
+    "Qualcomm Technologies, Inc. and/or its subsidiaries",
+]
+
 
 def normalize_string(s: str) -> str:
     """
@@ -18,6 +31,29 @@ def normalize_string(s: str) -> str:
         str: The normalized string.
     """
     return "".join(filter(str.isalpha, s))
+
+
+def has_internal_copyright(content: str, entities: list[str] | None = None) -> bool:
+    """
+    Check whether content contains a copyright line naming an internal entity.
+
+    Args:
+        content: Diff content for a single file change.
+        entities: Copyright-holder substrings to match; defaults to
+            DEFAULT_INTERNAL_ENTITIES.
+
+    Returns:
+        True if any copyright-bearing line contains one of the entity strings.
+    """
+    if not isinstance(content, str):
+        return False
+    if entities is None:
+        entities = DEFAULT_INTERNAL_ENTITIES
+
+    copyright_lines = re.findall(_ADDED_COPYRIGHT_PATTERN, content, re.MULTILINE) + re.findall(
+        _DELETED_COPYRIGHT_PATTERN, content, re.MULTILINE
+    )
+    return any(entity in line for line in copyright_lines for entity in entities)
 
 
 class CopyrightChecker:
@@ -79,11 +115,11 @@ class CopyrightChecker:
 
         added_copyrights = [
             (line[1:], normalize_string(line[1:]))
-            for line in re.findall(r"^\+.*Copyright.*", content, re.MULTILINE)
+            for line in re.findall(_ADDED_COPYRIGHT_PATTERN, content, re.MULTILINE)
         ]
         deleted_copyrights = [
             (line[1:], normalize_string(line[1:]))
-            for line in re.findall(r"^-.*Copyright.*", content, re.MULTILINE)
+            for line in re.findall(_DELETED_COPYRIGHT_PATTERN, content, re.MULTILINE)
         ]
         return added_copyrights, deleted_copyrights
 
