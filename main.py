@@ -12,7 +12,6 @@ from scanner.licenses import (
     COPYLEFT_LICENSES,
     PERMISSIVE_LICENSES,
     is_copyleft,
-    is_uncertain_expression,
     split_license_components,
 )
 from scanner.patch import Patch
@@ -218,43 +217,6 @@ def beautify_output(  # noqa: C901  pylint: disable=too-many-branches
     print("\n".join(output))
 
 
-# TODO: exceeds team max-complexity=10 (classification branches map directly to
-# the warning-vs-error rules documented in COMPLIANCE.md; revisit extraction
-# after proprietary mode lands and adds more branches).
-def is_uncertain_license_issue(issue: str) -> bool:  # noqa: C901
-    """
-    Check if a license issue is ONLY related to uncertain/unknown licenses.
-    Only treats it as a warning if the unknown license is the sole problem.
-    If there are other incompatible licenses, it remains a blocking error.
-
-    Special case: If the ONLY license is exactly "LicenseRef-scancode-proprietary-license",
-    it's a blocking error. If mixed with other licenses, proceed with normal logic.
-
-    Uncertain licenses (warnings) include:
-    - LicenseRef-scancode-unknown-*
-    - LicenseRef-scancode-warranty-*
-    - LicenseRef-scancode-proprietary-* (when mixed with other uncertain licenses)
-    - Any other LicenseRef-scancode-* that's not in the known permissive list
-
-    Args:
-        issue (str): The license issue string.
-
-    Returns:
-        bool: True if the issue is ONLY about uncertain licenses, False otherwise.
-    """
-    # Extract the license expression from the issue
-    if "Incompatible license added:" in issue:
-        license_expr = issue.split("Incompatible license added:")[1].strip()
-    elif "License deleted:" in issue and "and license added:" in issue:
-        # For license change issues, check the added license
-        license_expr = issue.split("and license added:")[1].strip()
-    else:
-        # For other issue types, check if it contains LicenseRef-scancode
-        return "LicenseRef-scancode-" in issue
-
-    return is_uncertain_expression(license_expr)
-
-
 def parse_args(argv: list) -> argparse.Namespace:
     """Parse the patch path and repository name from command-line arguments."""
     parser = argparse.ArgumentParser(description="Copyright and license compliance checker.")
@@ -293,22 +255,18 @@ def main() -> None:  # noqa: C901
     license_checker = LicenseChecker(patch, repo_name, allowed_licenses)
     copyright_checker = CopyrightChecker(patch)
 
-    flagged_license_files = license_checker.run()
+    flagged_license_files, warning_license_files = license_checker.run()
     flagged_copyright_files = copyright_checker.run()
 
     # Combine flagged files and their issues, separating errors from warnings
     flagged_files = {}  # Blocking errors
     warning_files = {}  # Non-blocking warnings
 
-    for file, issues in flagged_license_files.items():
-        # Separate uncertain license issues (warnings) from real errors
-        error_issues = [issue for issue in issues if not is_uncertain_license_issue(issue)]
-        warning_issues = [issue for issue in issues if is_uncertain_license_issue(issue)]
+    for file, issues in warning_license_files.items():
+        warning_files[file] = {"license_issues": list(issues), "copyright_issues": []}
 
-        if error_issues:
-            flagged_files[file] = {"license_issues": error_issues, "copyright_issues": []}
-        if warning_issues:
-            warning_files[file] = {"license_issues": warning_issues, "copyright_issues": []}
+    for file, issues in flagged_license_files.items():
+        flagged_files[file] = {"license_issues": list(issues), "copyright_issues": []}
 
     for file, issues in flagged_copyright_files.items():
         if file in flagged_files:
