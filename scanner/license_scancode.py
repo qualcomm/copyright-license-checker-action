@@ -9,7 +9,7 @@ import warnings
 import os
 from pathlib import Path
 
-from scanner.licenses import is_license_allowed
+from scanner.licenses import is_license_allowed, is_uncertain_expression
 from scanner.patch import Patch
 
 warnings.filterwarnings("ignore", message="Libmagic magic database not found")
@@ -152,18 +152,19 @@ class LicenseChecker:
     # TODO: exceeds team max-complexity=10 (rule branches mirror the blocking
     # scenarios documented in COMPLIANCE.md; proprietary mode will add further
     # branches here, so revisit extraction once that work has landed).
-    def run(self) -> dict:  # noqa: C901
+    def run(self) -> tuple:  # noqa: C901
         """
         Run the license checker.
 
         Returns:
-            dict: A dictionary of flagged files.
+            tuple: Dictionaries of blocking files and warning files.
         """
         source_files = [change for change in self.patch.changes if change["file_type"] == "source"]
 
         flagged_files = {}
+        warning_files = {}
         if not source_files:
-            return flagged_files
+            return flagged_files, warning_files
 
         license_results = self.detect_licenses_batch(source_files)
 
@@ -172,6 +173,7 @@ class LicenseChecker:
             deleted_licenses = license_results.get((idx, "deleted"), "")
 
             issues = []
+            warnings_for_file = []
             if change["change_type"] == "MODIFIED" or change["change_type"] == "ADDED":
                 # Check if licenses changed
                 if added_licenses and deleted_licenses and added_licenses != deleted_licenses:
@@ -179,23 +181,40 @@ class LicenseChecker:
                     # This allows dual-license scenarios like "BSD-3-Clause OR GPL-2.0-only"
                     # where at least one option is permissive
                     if not is_license_allowed(added_licenses, self.permissive_licenses):
-                        issues.append(
-                            f"License deleted: {deleted_licenses} and license added: {added_licenses}"  # noqa: E501
+                        message = (
+                            f"License deleted: {deleted_licenses} and license added: "
+                            f"{added_licenses}"
                         )
+                        target = (
+                            warnings_for_file if is_uncertain_expression(added_licenses) else issues
+                        )
+                        target.append(message)
                 elif added_licenses and not is_license_allowed(
                     added_licenses, self.permissive_licenses
                 ):
                     # New license added that is not permissive
-                    issues.append(f"Incompatible license added: {added_licenses}")
+                    message = f"Incompatible license added: {added_licenses}"
+                    target = (
+                        warnings_for_file if is_uncertain_expression(added_licenses) else issues
+                    )
+                    target.append(message)
                 elif deleted_licenses and not added_licenses:
                     # License was removed without replacement
-                    issues.append(f"License deleted: {deleted_licenses}")
+                    message = f"License deleted: {deleted_licenses}"
+                    # Preserve the legacy main.py fallback for deletion-only
+                    # messages: any ScanCode reference makes the issue a warning.
+                    target = (
+                        warnings_for_file if "LicenseRef-scancode-" in deleted_licenses else issues
+                    )
+                    target.append(message)
 
                 if issues:
                     flagged_files[change["path_name"]] = issues
+                if warnings_for_file:
+                    warning_files[change["path_name"]] = warnings_for_file
             if change["change_type"] == "ADDED":
                 if not added_licenses and self.is_source_file(change["path_name"]):
                     issues.append(f"No license added for source file: {change['path_name']}")
                     if issues:
                         flagged_files[change["path_name"]] = issues
-        return flagged_files
+        return flagged_files, warning_files

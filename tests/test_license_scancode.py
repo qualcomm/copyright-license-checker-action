@@ -153,11 +153,12 @@ class TestRunLicenseRules(ScancodeMockMixin, unittest.TestCase):
             allowed: Allowed license list; defaults to the permissive set.
 
         Returns:
-            The flagged-files dictionary.
+            The blocking-files dictionary.
         """
         self.install_scancode_mock(detections)
         checker = LicenseChecker(make_patch_obj(changes), "org/repo", allowed or PERMISSIVE)
-        return checker.run()
+        flagged, _warnings = checker.run()
+        return flagged
 
     def test_incompatible_license_added_is_flagged(self):
         """Adding a copyleft license to a permissive repo is flagged."""
@@ -216,7 +217,7 @@ class TestRunLicenseRules(ScancodeMockMixin, unittest.TestCase):
     def test_no_source_files_returns_empty(self):
         """With no source changes, run() short-circuits."""
         checker = LicenseChecker(make_patch_obj([]), "org/repo", PERMISSIVE)
-        self.assertEqual(checker.run(), {})
+        self.assertEqual(checker.run(), ({}, {}))
 
 
 class TestRunChangeTypeCoverageGaps(ScancodeMockMixin, unittest.TestCase):
@@ -234,7 +235,7 @@ class TestRunChangeTypeCoverageGaps(ScancodeMockMixin, unittest.TestCase):
             "org/repo",
             PERMISSIVE,
         )
-        self.assertEqual(checker.run(), {})
+        self.assertEqual(checker.run(), ({}, {}))
 
     def test_renamed_change_type_is_not_license_checked(self):
         """RENAMED changes are not license-checked."""
@@ -244,7 +245,7 @@ class TestRunChangeTypeCoverageGaps(ScancodeMockMixin, unittest.TestCase):
             "org/repo",
             PERMISSIVE,
         )
-        self.assertEqual(checker.run(), {})
+        self.assertEqual(checker.run(), ({}, {}))
 
 
 class TestLicenseComparisonFix(ScancodeMockMixin, unittest.TestCase):
@@ -264,8 +265,53 @@ class TestLicenseComparisonFix(ScancodeMockMixin, unittest.TestCase):
             "org/repo",
             PERMISSIVE,
         )
-        flagged = checker.run()
+        flagged, _warnings = checker.run()
         self.assertIn("License deleted: MIT and license added: TIM", flagged["src/foo.c"][0])
+
+
+class TestRunSeverityRouting(ScancodeMockMixin, unittest.TestCase):
+    """LicenseChecker assigns warning versus blocking severity."""
+
+    def run_checker(self, changes: list, detections: dict) -> tuple:
+        """Install the ScanCode mock and return the checker result buckets."""
+        self.install_scancode_mock(detections)
+        return LicenseChecker(make_patch_obj(changes), "org/repo", PERMISSIVE).run()
+
+    def test_unknown_addition_is_a_warning(self):
+        """An unrecognized ScanCode reference does not block the action."""
+        flagged, warnings = self.run_checker(
+            [make_change("+unknown license\n")],
+            {"0_added.txt": "LicenseRef-scancode-unknown-license-reference"},
+        )
+        self.assertEqual(flagged, {})
+        self.assertIn("Incompatible license added", warnings["src/foo.c"][0])
+
+    def test_mixed_gpl_and_unknown_addition_is_blocking(self):
+        """A known incompatible component keeps a mixed expression blocking."""
+        flagged, warnings = self.run_checker(
+            [make_change("+license\n")],
+            {"0_added.txt": "GPL-2.0-only AND LicenseRef-scancode-unknown-license-reference"},
+        )
+        self.assertIn("src/foo.c", flagged)
+        self.assertEqual(warnings, {})
+
+    def test_solitary_proprietary_marker_is_blocking(self):
+        """The existing proprietary marker remains a blocking issue."""
+        flagged, warnings = self.run_checker(
+            [make_change("+license\n")],
+            {"0_added.txt": "LicenseRef-scancode-proprietary-license"},
+        )
+        self.assertIn("src/foo.c", flagged)
+        self.assertEqual(warnings, {})
+
+    def test_unknown_deletion_is_a_warning(self):
+        """Deletion-only ScanCode references preserve the legacy warning behavior."""
+        flagged, warnings = self.run_checker(
+            [make_change("-unknown license\n")],
+            {"0_deleted.txt": "LicenseRef-scancode-unknown-license-reference"},
+        )
+        self.assertEqual(flagged, {})
+        self.assertIn("License deleted", warnings["src/foo.c"][0])
 
 
 if __name__ == "__main__":
