@@ -15,6 +15,14 @@ from scanner.patch import Patch
 warnings.filterwarnings("ignore", message="Libmagic magic database not found")
 
 
+def _route_license_message(
+    message: str, expression: str, issues: list, warning_messages: list
+) -> None:
+    """Append message to warning_messages if expression is uncertain, otherwise to issues."""
+    target = warning_messages if is_uncertain_expression(expression) else issues
+    target.append(message)
+
+
 class LicenseChecker:
     """
     Class to check for licenses in a patch file.
@@ -149,10 +157,7 @@ class LicenseChecker:
                 return True
         return False
 
-    # TODO: exceeds team max-complexity=10 (rule branches mirror the blocking
-    # scenarios documented in COMPLIANCE.md; proprietary mode will add further
-    # branches here, so revisit extraction once that work has landed).
-    def run(self) -> tuple:  # noqa: C901
+    def run(self) -> tuple:
         """
         Run the license checker.
 
@@ -172,49 +177,73 @@ class LicenseChecker:
             added_licenses = license_results.get((idx, "added"), "")
             deleted_licenses = license_results.get((idx, "deleted"), "")
 
-            warnings_for_file = []
-            issues = []
             if change["change_type"] in ("MODIFIED", "RENAMED_MODIFIED", "ADDED"):
-                # Check if licenses changed
-                if added_licenses and deleted_licenses and added_licenses != deleted_licenses:
-                    # Only flag if the new license is NOT permissive
-                    # This allows dual-license scenarios like "BSD-3-Clause OR GPL-2.0-only"
-                    # where at least one option is permissive
-                    if not is_license_allowed(added_licenses, self.permissive_licenses):
-                        message = (
-                            f"License deleted: {deleted_licenses} and license added: "
-                            f"{added_licenses}"
-                        )
-                        target = (
-                            warnings_for_file if is_uncertain_expression(added_licenses) else issues
-                        )
-                        target.append(message)
-                elif added_licenses and not is_license_allowed(
-                    added_licenses, self.permissive_licenses
-                ):
-                    # New license added that is not permissive
-                    message = f"Incompatible license added: {added_licenses}"
-                    target = (
-                        warnings_for_file if is_uncertain_expression(added_licenses) else issues
-                    )
-                    target.append(message)
-                elif deleted_licenses and not added_licenses:
-                    # License was removed without replacement
-                    message = f"License deleted: {deleted_licenses}"
-                    # Preserve the legacy main.py fallback for deletion-only
-                    # messages: any ScanCode reference makes the issue a warning.
-                    target = (
-                        warnings_for_file if "LicenseRef-scancode-" in deleted_licenses else issues
-                    )
-                    target.append(message)
-
-                if issues:
-                    flagged_files[change["path_name"]] = issues
-                if warnings_for_file:
-                    warning_files[change["path_name"]] = warnings_for_file
+                self._classify_license_change(
+                    change,
+                    {"added": added_licenses, "deleted": deleted_licenses},
+                    flagged_files,
+                    warning_files,
+                )
             if change["change_type"] == "ADDED":
-                if not added_licenses and self.is_source_file(change["path_name"]):
-                    issues.append(f"No license added for source file: {change['path_name']}")
-                    if issues:
-                        flagged_files[change["path_name"]] = issues
+                no_license_message = self._check_new_file_license(change, added_licenses)
+                if no_license_message:
+                    flagged_files.setdefault(change["path_name"], []).append(no_license_message)
         return flagged_files, warning_files
+
+    def _check_new_file_license(self, change: dict, added_licenses: str) -> str | None:
+        """
+        Check a newly-added source file for a missing license.
+
+        Args:
+            change (dict): The ADDED change under consideration.
+            added_licenses (str): SPDX expression detected on the added lines.
+
+        Returns:
+            str | None: A blocking message if the file has no detected
+                license; None if the file should raise no issue.
+        """
+        if added_licenses or not self.is_source_file(change["path_name"]):
+            return None
+        return f"No license added for source file: {change['path_name']}"
+
+    def _classify_license_change(
+        self, change: dict, license_info: dict, flagged_files: dict, warning_files: dict
+    ) -> None:
+        """
+        Classify a MODIFIED/ADDED change's license issues into output buckets.
+
+        Args:
+            change (dict): The source change being evaluated.
+            license_info (dict): Detected "added" and "deleted" SPDX expressions.
+            flagged_files (dict): Blocking result bucket to update in place.
+            warning_files (dict): Warning result bucket to update in place.
+        """
+        added_licenses = license_info["added"]
+        deleted_licenses = license_info["deleted"]
+
+        issues = []
+        warnings_for_file = []
+        if added_licenses and deleted_licenses and added_licenses != deleted_licenses:
+            # Only flag if the new license is NOT allowed. This allows dual-license
+            # scenarios like "BSD-3-Clause OR GPL-2.0-only" where at least one option
+            # is allowed.
+            if not is_license_allowed(added_licenses, self.permissive_licenses):
+                message = (
+                    f"License deleted: {deleted_licenses} and license added: " f"{added_licenses}"
+                )
+                _route_license_message(message, added_licenses, issues, warnings_for_file)
+        elif added_licenses and not is_license_allowed(added_licenses, self.permissive_licenses):
+            # New license added that is not allowed
+            message = f"Incompatible license added: {added_licenses}"
+            _route_license_message(message, added_licenses, issues, warnings_for_file)
+        elif deleted_licenses and not added_licenses:
+            # Preserve the legacy main.py fallback for deletion-only messages:
+            # any ScanCode reference makes the issue a warning.
+            message = f"License deleted: {deleted_licenses}"
+            target = warnings_for_file if "LicenseRef-scancode-" in deleted_licenses else issues
+            target.append(message)
+
+        if issues:
+            flagged_files[change["path_name"]] = issues
+        if warnings_for_file:
+            warning_files[change["path_name"]] = warnings_for_file
