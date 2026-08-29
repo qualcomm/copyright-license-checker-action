@@ -110,3 +110,8 @@ def is_license_allowed(expression: str, allowed_licenses: list) -> bool:
             return False
 
     return True
+
+
+def is_permissive(expression: str) -> bool:
+    """Return whether an SPDX expression is allowed by the canonical permissive list."""
+    return is_license_allowed(expression, PERMISSIVE_LICENSES)

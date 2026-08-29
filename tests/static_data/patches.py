@@ -191,3 +191,18 @@ index 0000000..1234567
 +def new_feature():
 +    return None
 """
+
+# A new source file with internal copyright but no OSS license header.
+NEW_FILE_WITH_INTERNAL_COPYRIGHT_NO_LICENSE = (
+    """diff --git a/src/new_internal.c b/src/new_internal.c
+new file mode 100644
+index 0000000..1234567
+--- /dev/null
++++ b/src/new_internal.c
+@@ -0,0 +1,4 @@
++/*
++ * Copyright (c) 2024 Qualcomm Technologies, Inc.
++ */
++int new_internal(void) { return 0; }
+"""
+)

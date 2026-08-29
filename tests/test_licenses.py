@@ -8,6 +8,7 @@ from scanner.licenses import (
     PROPRIETARY_LICENSE,
     is_copyleft,
     is_license_allowed,
+    is_permissive,
     is_uncertain_expression,
     split_license_components,
 )
@@ -59,6 +60,10 @@ class TestIsLicenseAllowed(unittest.TestCase):
 
     def test_unknown_license_is_not_allowed(self):
         self.assertFalse(is_license_allowed("LicenseRef-scancode-unknown", PERMISSIVE_LICENSES))
+
+    def test_is_permissive_uses_canonical_permissive_list(self):
+        self.assertTrue(is_permissive("MIT AND Apache-2.0"))
+        self.assertFalse(is_permissive("MIT AND GPL-2.0-only"))
 
 
 class TestGplOrLaterCompatibility(unittest.TestCase):
