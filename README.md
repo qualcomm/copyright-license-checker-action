@@ -45,6 +45,30 @@ jobs:
 
 ```
 
+### Inputs
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `patch_file` | *(required)* | Path to the patch file to check. |
+| `repo_name` | *(required)* | The name of the GitHub repository. |
+| `mode` | `opensource` | `opensource` or `proprietary`. See [Proprietary Mode](COMPLIANCE.md#proprietary-mode) for details. |
+| `proprietary_entities` | *(empty)* | Comma-separated extra copyright-holder strings treated as internal authorship in `proprietary` mode. |
+
+### Checking a Proprietary Codebase
+
+If you are checking an internally developed proprietary codebase rather than an open-source repository, set `mode: proprietary`:
+
+```yml
+      - name: Run copyright/license detector
+        uses: qualcomm/copyright-license-checker-action@main
+        with:
+          patch_file: pr.patch
+          repo_name: ${{ github.repository }}
+          mode: proprietary
+```
+
+In this mode, Qualcomm-authored files are expected to carry a proprietary rights statement rather than an OSS license. Vendored permissive open-source code is allowed but warns for review and attribution. See [Proprietary Mode](COMPLIANCE.md#proprietary-mode) for the full behavior.
+
 ## Scenarios Covered
 ### License Detection
 This action detects licenses in the code changes and ensures that any added licenses are permissive and compliant with the repository's policies.
