@@ -42,13 +42,14 @@ class RegressionSnapshotTestCase(TempCwdMixin, unittest.TestCase):
     repo_name "org/repo" (which matches no scanner/config.py entry).
     """
 
-    def run_main(self, patch_content: str, detections: dict) -> tuple:
+    def run_main(self, patch_content: str, detections: dict, mode: str = None) -> tuple:
         """
         Write the patch to disk and run main() end-to-end.
 
         Args:
             patch_content: Raw patch text.
             detections: Scancode filename -> SPDX expression (or None) mapping.
+            mode: Optional --mode value.
 
         Returns:
             Tuple of (captured stdout, exit code).
@@ -57,6 +58,8 @@ class RegressionSnapshotTestCase(TempCwdMixin, unittest.TestCase):
         patch_path.write_text(patch_content, encoding="utf-8")
 
         argv = ["main.py", str(patch_path), "org/repo"]
+        if mode:
+            argv += ["--mode", mode]
 
         buffer = io.StringIO()
         with scancode_mock_patcher(detections):
@@ -153,6 +156,50 @@ class TestOpensourceModeScenarios(RegressionSnapshotTestCase):
         output, code = self.run_main(patches.ADDITION_ONLY, {"0_added.txt": PROPRIETARY_LICENSE})
         self.assertEqual(code, EXPECTED_OS7_SOLE_PROPRIETARY_BLOCKS_OPENSOURCE_CODE)
         self.assertEqual(output, EXPECTED_OS7_SOLE_PROPRIETARY_BLOCKS_OPENSOURCE)
+
+
+class TestProprietaryModeScenarios(RegressionSnapshotTestCase):
+    """End-to-end coverage for proprietary-mode rule differences."""
+
+    def test_proprietary_removal_blocks(self):
+        """Removing a proprietary rights statement blocks."""
+        output, code = self.run_main(
+            patches.DELETION_ONLY, {"0_deleted.txt": PROPRIETARY_LICENSE}, mode="proprietary"
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("Proprietary license statement removed", output)
+        self.assertIn("B L O C K I N G", output)
+        self.assertNotIn("License file not found", output)
+
+    def test_permissive_addition_warns(self):
+        """Adding permissive OSS warns and exits zero."""
+        output, code = self.run_main(
+            patches.ADDITION_ONLY, {"0_added.txt": "MIT"}, mode="proprietary"
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("Permissive open-source license added: MIT", output)
+        self.assertIn("NOTICE", output)
+        self.assertIn("W A R N I N G S", output)
+
+    def test_internal_new_file_without_license_is_silent(self):
+        """A new internally copyrighted source file needs no OSS license."""
+        output, code = self.run_main(
+            patches.NEW_FILE_WITH_INTERNAL_COPYRIGHT_NO_LICENSE,
+            {"0_added.txt": None},
+            mode="proprietary",
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("No license or copyright issues detected", output)
+
+    def test_permissive_swapped_for_proprietary_blocks_with_distinct_message(self):
+        """Replacing a real license with a proprietary marker still blocks."""
+        output, code = self.run_main(
+            patches.ADDITION_AND_DELETION,
+            {"0_added.txt": PROPRIETARY_LICENSE, "0_deleted.txt": "MIT"},
+            mode="proprietary",
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("attribution terms are not extinguished", output)
 
 
 if __name__ == "__main__":
