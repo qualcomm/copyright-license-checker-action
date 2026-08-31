@@ -86,6 +86,23 @@ LICENSE_FILE_CANDIDATES = [
 UNRELIABLE_LICENSE_REFS = {"LicenseRef-scancode-proprietary-license"}
 
 
+def _scancode_output_lines(proc) -> list:
+    """
+    The reportable detail from a finished scancode run: its exit code and any
+    captured stdout/stderr, as lines ready to be logged.
+
+    Returns an empty list when there is nothing to report (or the process never
+    started), so callers can log unconditionally.
+    """
+    if proc is None:
+        return []
+    lines = [f"scancode exit code: {proc.returncode}"]
+    for name, text in (("stdout", proc.stdout), ("stderr", proc.stderr)):
+        if text and text.strip():
+            lines.append(f"scancode {name}: {text.strip()}")
+    return lines
+
+
 def _detect_license_from_file(license_file_path: str) -> str:
     """
     Run scancode on a LICENSE file and return a confident SPDX expression.
@@ -101,20 +118,37 @@ def _detect_license_from_file(license_file_path: str) -> str:
         str: A confident SPDX expression, or None if nothing was detected / the
             scan failed.
     """
+    proc = None
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             output_file = os.path.join(tmpdir, 'scancode_results.json')
-            subprocess.run(
+            # Do NOT use check=True: a CalledProcessError reports only the exit
+            # status, and --quiet keeps scancode's reason off stdout, so a broken
+            # toolchain is indistinguishable from an unrecognizable LICENSE file
+            # (this is how a click 8.5.0 regression that made every scancode run
+            # exit 2 surfaced as "License Not Conclusively Detected" -- see the
+            # click pin in requirements.txt). Capture the output and report it.
+            proc = subprocess.run(
                 ['scancode', '--license', '--strip-root', '--quiet',
                  '--json-pp', output_file, license_file_path],
-                check=True, capture_output=True,
+                capture_output=True, text=True, check=False,
             )
             with open(output_file, 'r', encoding='utf-8') as handle:
                 data = json.load(handle)
-    except (subprocess.CalledProcessError, OSError, json.JSONDecodeError) as exc:
+    except (OSError, json.JSONDecodeError) as exc:
         print(f"{LOG_PREFIX} Warning: license detection failed for "
               f"{license_file_path}: {exc}")
+        for line in _scancode_output_lines(proc):
+            print(f"{LOG_PREFIX} {line}")
         return None
+
+    # Results parsed despite a non-zero exit (scancode does that for per-file scan
+    # warnings): usable, but surface what it complained about.
+    if proc.returncode != 0:
+        print(f"{LOG_PREFIX} Warning: scancode exited {proc.returncode} while "
+              f"scanning {license_file_path} but produced results; continuing.")
+        for line in _scancode_output_lines(proc):
+            print(f"{LOG_PREFIX} {line}")
 
     for file_result in data.get('files', []):
         if file_result.get('type') == 'file':
