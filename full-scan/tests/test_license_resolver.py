@@ -1,7 +1,15 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
+import json
+
 import scanner.license_resolver as lr
+
+# The scancode-failure tests exercise _detect_license_from_file directly (it is the
+# unit under test, not an implementation detail reached through resolve_license), and
+# the _FakeProc subprocess stand-in below trips too-few-public-methods. Both are
+# idiomatic in a test module.
+# pylint: disable=protected-access,too-few-public-methods
 
 
 def _with_license_file(tmp_path, monkeypatch, detected, content="dummy license text"):
@@ -139,3 +147,76 @@ def test_empty_license_file_still_honors_config(tmp_path, monkeypatch):
     (tmp_path / "LICENSE").write_text("   ")
     res = lr.resolve_license_details("qualcomm-linux/meta-qcom-kernel")
     assert res.source == "config" and res.license == "GPL-2.0"
+
+
+# --- a failing scancode must be diagnosable, not silently "undetected" --------
+
+class _FakeProc:
+    """Stand-in for a finished subprocess.run() result."""
+
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _fake_scancode(returncode=0, stderr="", results=None):
+    """
+    Build a subprocess.run replacement for _detect_license_from_file.
+
+    Writes `results` (a scancode JSON payload) to the --json-pp path when given;
+    when it is None the run leaves no output file, mimicking a scancode that
+    aborted before writing anything.
+    """
+    def _run(cmd, **_kwargs):
+        if results is not None:
+            out_path = cmd[cmd.index("--json-pp") + 1]
+            with open(out_path, "w", encoding="utf-8") as handle:
+                json.dump(results, handle)
+        return _FakeProc(returncode, stderr=stderr)
+
+    return _run
+
+
+def _one_file_results(expression):
+    """A minimal scancode payload: one file with a single confident match."""
+    return {"files": [{
+        "type": "file",
+        "license_detections": [{
+            "matches": [{"spdx_license_expression": expression, "matched_length": 50}],
+        }],
+    }]}
+
+
+def test_scancode_failure_reports_exit_code_and_stderr(tmp_path, monkeypatch, capsys):
+    # A scancode that dies before writing results (e.g. the click 8.5.0 regression
+    # that made every invocation exit 2 with a UsageError) must print WHY. Without
+    # this the only clue in CI is "returned non-zero exit status 2", which reads as
+    # "your LICENSE is unrecognizable" rather than "the scanner is broken".
+    (tmp_path / "LICENSE").write_text("dummy license text")
+    monkeypatch.setattr(lr.subprocess, "run", _fake_scancode(
+        returncode=2, stderr="Error: The option --strip-root cannot be used together"))
+    assert lr._detect_license_from_file(str(tmp_path / "LICENSE")) is None
+    out = capsys.readouterr().out
+    assert "license detection failed" in out
+    assert "scancode exit code: 2" in out
+    assert "--strip-root cannot be used together" in out
+
+
+def test_scancode_results_used_despite_nonzero_exit(tmp_path, monkeypatch, capsys):
+    # scancode exits non-zero for per-file scan warnings while still writing valid
+    # results: use them, but say what it complained about.
+    (tmp_path / "LICENSE").write_text("dummy license text")
+    monkeypatch.setattr(lr.subprocess, "run", _fake_scancode(
+        returncode=1, stderr="some warning", results=_one_file_results("MIT")))
+    assert lr._detect_license_from_file(str(tmp_path / "LICENSE")) == "MIT"
+    out = capsys.readouterr().out
+    assert "exited 1" in out and "some warning" in out
+
+
+def test_scancode_success_is_quiet(tmp_path, monkeypatch, capsys):
+    (tmp_path / "LICENSE").write_text("dummy license text")
+    monkeypatch.setattr(lr.subprocess, "run", _fake_scancode(
+        results=_one_file_results("MIT")))
+    assert lr._detect_license_from_file(str(tmp_path / "LICENSE")) == "MIT"
+    assert "scancode exit code" not in capsys.readouterr().out
