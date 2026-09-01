@@ -187,6 +187,23 @@ class TestIsUncertainLicenseIssue(unittest.TestCase):
         )
 
 
+class TestParseArgs(unittest.TestCase):
+    """Tests for the command-line interface used by the action."""
+
+    def test_positional_args_are_required(self):
+        """The existing patch-file and repository arguments are preserved."""
+        args = main.parse_args(["pr.patch", "org/repo"])
+        self.assertEqual(args.patch_file, "pr.patch")
+        self.assertEqual(args.repo_name, "org/repo")
+
+    def test_missing_positional_exits(self):
+        """Omitting a required positional argument fails through argparse."""
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                main.parse_args(["pr.patch"])
+        self.assertEqual(caught.exception.code, 2)
+
+
 class TestBeautifyOutput(unittest.TestCase):
     """
     beautify_output is a pure rendering concern: it prints the report and
