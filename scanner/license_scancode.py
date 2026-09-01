@@ -9,6 +9,7 @@ import warnings
 import os
 from pathlib import Path
 
+from scanner.licenses import is_license_allowed
 from scanner.patch import Patch
 
 warnings.filterwarnings("ignore", message="Libmagic magic database not found")
@@ -31,94 +32,6 @@ class LicenseChecker:
         self.patch = patch
         self.repo = repo
         self.permissive_licenses = permissive_licenses
-
-    # TODO: exceeds team max-complexity=10, branch count, and nesting depth
-    # (SPDX expression evaluation covers AND/OR grouping plus GPL "-or-later"
-    # compatibility; revisit extraction after proprietary mode lands, which
-    # adds a canonical-list evaluation path).
-    def is_license_permissive(self, scancode_license: str) -> bool:  # noqa: C901
-        # pylint: disable=too-many-branches,too-many-nested-blocks
-        """
-        Check if a license is permissive by evaluating SPDX license expressions.
-
-        Special handling for dual-license scenarios:
-        - If expression starts with (X OR Y), we check if at least one option is permissive
-        - If the same licenses appear later with AND, we ignore them (they're from comments)
-
-        For OR expressions: At least one option must be permissive
-        For AND expressions: All components must be permissive
-
-        Special GPL compatibility handling:
-        - If project has GPL-X.Y-or-later, files with GPL-X.Y-only or
-          GPL-X.Y-or-later are compatible
-
-        Args:
-            scancode_license (str): The SPDX license expression to check.
-
-        Returns:
-            bool: True if the license expression is permissive, False otherwise.
-        """
-        expression = scancode_license.strip()
-
-        # Check if this is a dual-license pattern: starts with (X OR Y) AND ...
-        # In this case, if the OR part has a permissive option, we accept it
-        if expression.startswith("(") and " OR " in expression.split(")")[0]:
-            # Extract the OR part
-            or_part = expression.split(")")[0] + ")"
-            or_part_clean = or_part.strip("()")
-            or_licenses = [lic.strip() for lic in or_part_clean.split(" OR ")]
-
-            # Check if at least one license in the OR is permissive
-            for lic in or_licenses:
-                if lic in self.permissive_licenses:
-                    return True
-
-            return False
-
-        # Standard evaluation: split by AND first to get AND-groups
-        and_groups = [group.strip() for group in expression.split(" AND ")]
-
-        # For each AND group, check if it's permissive
-        for and_group in and_groups:
-            # Check if this group contains OR
-            if " OR " in and_group:
-                # Remove parentheses
-                and_group = and_group.strip("()")
-                # Split by OR - at least one must be permissive
-                or_licenses = [lic.strip() for lic in and_group.split(" OR ")]
-
-                # Check if at least one license in the OR group is permissive
-                has_permissive = False
-                for lic in or_licenses:
-                    if lic in self.permissive_licenses:
-                        has_permissive = True
-                        break
-
-                if not has_permissive:
-                    return False
-            else:
-                # Single license in this AND group - must be permissive
-                lic = and_group.strip("()")
-
-                # Check GPL "or-later" compatibility
-                # If the file has GPL-X.Y-only or GPL-X.Y-or-later, and the
-                # project allows GPL-X.Y-or-later, it's compatible
-                if lic not in self.permissive_licenses:
-                    # Check if this is a GPL license compatibility case
-                    is_compatible = False
-                    for allowed_lic in self.permissive_licenses:
-                        if "-or-later" in allowed_lic:
-                            # Extract base license (e.g., "GPL-2.0" from "GPL-2.0-or-later")
-                            base_license = allowed_lic.replace("-or-later", "")
-                            # Check if file license is compatible
-                            if lic in (allowed_lic, f"{base_license}-only", base_license):
-                                is_compatible = True
-                                break
-
-                    if not is_compatible:
-                        return False
-
-        return True
 
     # TODO: exceeds team max-complexity=10 and local-variable count (batches
     # added/deleted line groups across all changes into one scancode
@@ -265,11 +178,13 @@ class LicenseChecker:
                     # Only flag if the new license is NOT permissive
                     # This allows dual-license scenarios like "BSD-3-Clause OR GPL-2.0-only"
                     # where at least one option is permissive
-                    if not self.is_license_permissive(added_licenses):
+                    if not is_license_allowed(added_licenses, self.permissive_licenses):
                         issues.append(
                             f"License deleted: {deleted_licenses} and license added: {added_licenses}"  # noqa: E501
                         )
-                elif added_licenses and not self.is_license_permissive(added_licenses):
+                elif added_licenses and not is_license_allowed(
+                    added_licenses, self.permissive_licenses
+                ):
                     # New license added that is not permissive
                     issues.append(f"Incompatible license added: {added_licenses}")
                 elif deleted_licenses and not added_licenses:

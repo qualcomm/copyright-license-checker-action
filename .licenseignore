@@ -2,9 +2,8 @@
 # exercise the checker itself; they are not real license grants.
 tests/**
 
-# These files' own content (SPDX identifiers, license names, and example
-# license text used for detection/testing logic) is mistaken by scancode for
-# an added license.
-main.py
+# These files contain license lists or mapping tables that scancode mistakes
+# for added licenses. All other logic files are checked by the action itself.
+scanner/licenses.py
 scanner/config.py
-scanner/license_scancode.py
+.licenseignore
