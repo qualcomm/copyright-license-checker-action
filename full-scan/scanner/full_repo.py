@@ -101,7 +101,15 @@ class RepoScan:
         # walking untracked build artifacts. Adding --others --exclude-standard
         # additionally picks up untracked-but-not-ignored files (e.g. added but
         # not yet committed) while still skipping anything .gitignore excludes.
-        ls_files_cmd = ['git', 'ls-files']
+        #
+        # -z is load-bearing, not a tidy-up: without it git honors core.quotePath
+        # (on by default) and hands back a path holding any non-ASCII byte in
+        # C-quoted form -- "caf\303\251/sub/main.c", surrounding quotes included.
+        # That trailing quote makes every endswith() extension test below fail, so
+        # the file is silently dropped from the scan instead of being checked; one
+        # non-ASCII directory name takes its whole subtree with it. -z emits the
+        # raw bytes NUL-separated, unquoted, for both command forms.
+        ls_files_cmd = ['git', 'ls-files', '-z']
         if include_untracked:
             ls_files_cmd += ['--cached', '--others', '--exclude-standard']
         result = subprocess.run(
@@ -110,8 +118,13 @@ class RepoScan:
             check=True,
             capture_output=True,
             text=True,
+            # A filename can hold bytes that are not valid UTF-8, which would
+            # raise UnicodeDecodeError under text=True and abort the whole scan.
+            # surrogateescape round-trips those bytes, and Python's filesystem
+            # encoding uses the same handler, so the paths still open later.
+            errors='surrogateescape',
         )
-        listed_files = [line for line in result.stdout.splitlines() if line]
+        listed_files = [path_name for path_name in result.stdout.split('\0') if path_name]
 
         # Build the list of files the full-repo scan should cover. Files matched
         # by .licenseignore are also collected separately (self.ignored) so a
