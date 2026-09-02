@@ -5,7 +5,10 @@ composite Action. It complements the pull-request **patch scan** (at the repo ro
 patch scan only inspects a PR's diff, `full-scan` walks **every source file** in a repository
 so it also catches legacy files committed before the checker was enabled.
 
-This directory is **self-contained** — it imports nothing from the patch scan.
+This directory is **self-contained** — it imports nothing from the patch scan. It also has its
+own **file-handling rules** (a wider source-extension list, a relaxed tier for build files, and
+BitBake files excluded outright) and its own findings, so what blocks here is not identical to
+the patch scan: see [COMPLIANCE.md](COMPLIANCE.md).
 
 ## Run it
 
@@ -34,6 +37,7 @@ python full-scan/full_scan.py <owner>/<repo> <fail_on_findings> --repo-path <che
 ```
 full-scan/
 ├── action.yml            # composite Action (setup-python 3.12 -> pip install -> full_scan.py)
+├── COMPLIANCE.md         # what blocks vs. warns here (deltas on top of ../COMPLIANCE.md)
 ├── full_scan.py          # entry point: resolve license -> RepoScan -> FullScanner -> report
 ├── requirements.txt      # runtime deps (scancode-toolkit, pathspec, click)
 ├── scanner/              # self-contained scan engine
@@ -55,5 +59,6 @@ pip install pytest          # dev-only; not a runtime dependency
 python -m pytest full-scan/tests/ -q
 ```
 
-See [docs/architecture.md](docs/architecture.md) for the end-to-end architecture, and
+See [docs/architecture.md](docs/architecture.md) for the end-to-end architecture,
+[COMPLIANCE.md](COMPLIANCE.md) for what blocks vs. warns, and
 [scripts/README.md](scripts/README.md) for the repolinter-comparison diagnostics.
