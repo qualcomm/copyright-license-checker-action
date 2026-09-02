@@ -1,5 +1,9 @@
 scancode-toolkit==32.5.0
 pathspec==0.12.1
+# Already installed as a scancode dependency, declared here because scanner/full_scanner.py
+# imports it directly: SPDX expressions are evaluated with the real parser (string splitting
+# cannot honor parentheses). Pinned to scancode 32.5.0's own floor so the two cannot conflict.
+license-expression==30.4.4
 # The <8.5 bound is load-bearing, not hygiene: click 8.5.0 made a flag's Option.default
 # a Sentinel.UNSET, and commoncode's cliutils._is_set decides "was this option used?" with
 # `value != param.default` -- so every boolean flag reads as used and scancode's

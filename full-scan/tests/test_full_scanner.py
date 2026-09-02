@@ -28,6 +28,13 @@ def make_scanner():
     ("GPL-2.0", "error"),                             # concrete copyleft
     ("(MIT OR Apache-2.0) AND GPL-2.0", "error"),     # regression: trailing AND MUST be evaluated
     ("(MIT OR GPL-2.0) AND GPL-3.0-only", "error"),   # leading OR ok, trailing AND disallowed
+    # An AND group nested inside an OR: the left branch is entirely permissive, so the
+    # file is compliant however the right branch is licensed. These were all blocked
+    # before expression evaluation moved to the real SPDX parser.
+    ("(MIT AND BSD-3-Clause) OR GPL-2.0-only", "ok"),
+    ("((MIT AND BSD-3-Clause) OR GPL-2.0-only)", "ok"),  # scancode 32.5.0 adds outer parens
+    ("Apache-2.0 OR (MIT AND GPL-2.0-only)", "ok"),
+    ("GPL-2.0-only OR (MIT AND Apache-2.0)", "ok"),
 ])
 def test_classify_license(expression, expected):
     assert make_scanner().classify_license(expression) == expected
@@ -59,9 +66,48 @@ def test_only_uncertain_is_warning():
     ("GPL-2.0-only AND GPL-3.0-only", COPYLEFT_LICENSES, True),          # compound all-copyleft vs copyleft list
     ("BSD-3-Clause AND GPL-2.0-only", PERMISSIVE_LICENSES, False),       # mixed: not all permissive
     ("BSD-3-Clause AND GPL-2.0-only", COPYLEFT_LICENSES, False),         # mixed: not all copyleft
+    # Parentheses. Splitting on " AND " cut through a parenthesized group, so an AND
+    # group nested inside an OR was rejected even when the other OR branch was fully
+    # permissive. All four shapes below were measured wrong (or right only by luck,
+    # when the allowed atom happened to land in the fragment that kept the " OR ").
+    ("(MIT AND Apache-2.0) OR GPL-2.0-only", PERMISSIVE_LICENSES, True),
+    ("Apache-2.0 OR (MIT AND GPL-2.0-only)", PERMISSIVE_LICENSES, True),
+    ("GPL-2.0-only OR (MIT AND Apache-2.0)", PERMISSIVE_LICENSES, True),
+    ("(MIT AND GPL-2.0-only) OR Apache-2.0", PERMISSIVE_LICENSES, True),
+    ("((MIT AND BSD-3-Clause) OR GPL-2.0-only)", PERMISSIVE_LICENSES, True),
+    ("(MIT OR Apache-2.0) AND GPL-2.0-only", PERMISSIVE_LICENSES, False),  # AND group still binds
+    # Nesting deeper than one level: the inner OR is satisfied by Apache-2.0 alone.
+    ("MIT AND (Apache-2.0 OR (BSD-3-Clause AND GPL-2.0-only))", PERMISSIVE_LICENSES, True),
+    ("MIT AND (GPL-3.0-only OR (BSD-3-Clause AND GPL-2.0-only))", PERMISSIVE_LICENSES, False),
+    # Deprecated-id normalization, both directions. The SPDX parser canonicalizes
+    # LGPL-3.0 -> LGPL-3.0-only, and COPYLEFT_LICENSES spells that license ONLY in the
+    # deprecated form -- so the allow-list has to go through the same parser or the
+    # canonical spelling silently stops matching.
+    ("LGPL-3.0", COPYLEFT_LICENSES, True),
+    ("LGPL-3.0-only", COPYLEFT_LICENSES, True),
 ])
 def test_expression_allowed_by(expression, allowed, expected):
     assert expression_allowed_by(expression, allowed) is expected
+
+
+def test_unparseable_expression_falls_back(capsys):
+    # The SPDX grammar rejects a dangling operator. Rather than raise (aborting the
+    # scan) or guess an answer, evaluation falls back to the old flat splitter and
+    # says so on stderr, once per distinct expression.
+    assert expression_allowed_by("MIT AND", PERMISSIVE_LICENSES) is False
+    assert expression_allowed_by("MIT AND", PERMISSIVE_LICENSES) is False
+    err = capsys.readouterr().err
+    assert "Could not parse license expression 'MIT AND'" in err
+    assert err.count("Could not parse") == 1
+
+
+def test_wrapped_exception_license_matches_whole_form():
+    # A "WITH" license is one leaf, not two: its str() is the full compound form that
+    # PERMISSIVE_LICENSES spells out, and the bare exception is NOT independently
+    # allowed (the allow-list is normalized entry by entry, never flattened to atoms).
+    assert expression_allowed_by(
+        "Apache-2.0 WITH LLVM-exception", PERMISSIVE_LICENSES) is True
+    assert expression_allowed_by("LLVM-exception", PERMISSIVE_LICENSES) is False
 
 
 def test_is_expression_permissive_delegates():

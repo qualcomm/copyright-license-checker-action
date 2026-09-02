@@ -9,7 +9,10 @@ import shutil
 import tempfile
 import subprocess
 import warnings
+from functools import lru_cache
 from pathlib import Path
+from license_expression import (AND, OR, ExpressionError, ExpressionParseError,
+                                get_spdx_licensing)
 from scanner.full_repo import RepoScan
 
 warnings.filterwarnings("ignore", message="Libmagic magic database not found")
@@ -62,6 +65,62 @@ def split_license_expression(expression: str) -> list:
     return licenses
 
 
+@lru_cache(maxsize=None)
+def _spdx_licensing():
+    """Build the SPDX licensing index once per process. get_spdx_licensing() does
+    no caching of its own -- it hands back a fresh object every call -- and this is
+    invoked per file, so memoize it here."""
+    return get_spdx_licensing()
+
+
+@lru_cache(maxsize=1024)
+def _parse_expression(expression: str):
+    """
+    Parse an SPDX expression into a license_expression AST, or None when it cannot
+    be parsed. Cached because a repository scan evaluates the same handful of
+    distinct expressions over thousands of files, and each allow-list entry is
+    normalized through here too.
+
+    Returns:
+        The parsed expression tree, or None if the expression is empty or invalid.
+    """
+    try:
+        return _spdx_licensing().parse(expression)
+    except (ExpressionError, ExpressionParseError):
+        return None
+
+
+@lru_cache(maxsize=None)
+def _normalized_allowed(allowed: tuple) -> frozenset:
+    """
+    Normalize an allow-list through the same parser used on detected expressions.
+
+    This is not cosmetic: the SPDX parser canonicalizes deprecated ids
+    (GPL-2.0 -> GPL-2.0-only, LGPL-3.0 -> LGPL-3.0-only, ...), and the hand-written
+    lists in scanner/licenses.py carry some entries ONLY in the deprecated form.
+    Comparing a normalized detection against a raw list would silently stop matching
+    those. Entries are normalized one by one and NOT flattened into atoms, so a
+    compound entry stays a compound: it can only ever match a whole expression, never
+    a single license inside one.
+    """
+    normalized = set()
+    for entry in allowed:
+        parsed = _parse_expression(entry)
+        normalized.add(str(parsed) if parsed is not None else entry)
+    return frozenset(normalized)
+
+
+def _node_allowed_by(node, allowed: frozenset) -> bool:
+    """Recursively evaluate a parsed SPDX expression against an allowed set."""
+    if isinstance(node, AND):
+        return all(_node_allowed_by(arg, allowed) for arg in node.args)
+    if isinstance(node, OR):
+        return any(_node_allowed_by(arg, allowed) for arg in node.args)
+    # A leaf: a LicenseSymbol, or a LicenseWithExceptionSymbol whose str() is the
+    # full "X WITH Y" form that the allow-lists spell out.
+    return str(node) in allowed
+
+
 def expression_allowed_by(expression: str, allowed: list) -> bool:
     """
     Evaluate whether an SPDX license expression is satisfied by `allowed`,
@@ -69,6 +128,14 @@ def expression_allowed_by(expression: str, allowed: list) -> bool:
     OR group at least one option must be in `allowed`. Flattening the expression
     is wrong -- it would accept a disallowed license hidden in an AND group and
     reject a valid dual-license such as "MIT OR GPL-2.0-only".
+
+    Evaluation goes through the real SPDX parser (license_expression, already a
+    scancode dependency) rather than string splitting, because splitting on
+    " AND " cuts straight through a parenthesized group: "(MIT AND Apache-2.0) OR
+    GPL-2.0-only" became the fragments "(MIT" and "Apache-2.0) OR GPL-2.0-only",
+    so a fully permissive OR branch was reported as disallowed. The parser also
+    normalizes deprecated license ids, which is why the allow-list is normalized
+    the same way (see _normalized_allowed).
 
     This is the shared kernel behind both per-file classification
     (FullScanner.is_expression_permissive, `allowed` = the permissive set) and the
@@ -85,6 +152,32 @@ def expression_allowed_by(expression: str, allowed: list) -> bool:
         bool: True if the expression is satisfied by `allowed`, False otherwise.
     """
     expression = expression.strip()
+    parsed = _parse_expression(expression)
+    if parsed is None:
+        # Malformed, or something the SPDX grammar rejects outright. Fall back to
+        # the flat splitter rather than failing open (which would hide a GPL file)
+        # or closed (which would flag every file in the repo).
+        _warn_unparseable(expression)
+        return _expression_allowed_by_flat(expression, allowed)
+    return _node_allowed_by(parsed, _normalized_allowed(tuple(allowed)))
+
+
+@lru_cache(maxsize=None)
+def _warn_unparseable(expression: str) -> None:
+    """Report an expression the SPDX parser rejected -- once per distinct
+    expression, which lru_cache gives us for free."""
+    print(f"{LOG_PREFIX} Could not parse license expression "
+          f"'{expression}'; falling back to approximate matching.", file=sys.stderr)
+
+
+def _expression_allowed_by_flat(expression: str, allowed: list) -> bool:
+    """
+    Approximate AND/OR evaluation by string splitting, kept only as the fallback
+    for expressions the SPDX parser cannot parse. It does NOT honor parentheses --
+    that is exactly why expression_allowed_by no longer uses it as the primary
+    path -- but for an unparseable string it is still better than a blanket
+    allow-or-deny.
+    """
     for and_group in expression.split(' AND '):
         and_group = and_group.strip()
         if ' OR ' in and_group:

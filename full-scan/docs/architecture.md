@@ -139,8 +139,10 @@ by extension (`LICENSE_OPTIONAL_EXTENSIONS` — `.mk`/`.bp` build files) and by 
 
 ## 4. `classify_license()` decision logic
 
-Permissiveness is decided **structurally** (AND/OR aware) first; only if that fails do we split
-error-vs-warning on the flattened license list.
+Permissiveness is decided **structurally** first — the expression is parsed with the real SPDX
+grammar (`license_expression`, a scancode dependency), so nesting and parentheses are honored at
+any depth and deprecated ids are normalized on both sides of the comparison. Only if that fails
+do we split error-vs-warning on the flattened license list.
 
 ```mermaid
 flowchart TD
@@ -162,6 +164,7 @@ flowchart TD
 | `BSD-3-Clause-Clear` | ok | permissive |
 | `MIT OR GPL-2.0-only` | ok | OR group has a permissive option |
 | `(MIT OR Apache-2.0) AND GPL-2.0` | error | permissive OR group, but the trailing AND term is disallowed |
+| `(MIT AND BSD-3-Clause) OR GPL-2.0-only` | ok | one OR branch is entirely permissive, so the parenthesized AND group satisfies the whole expression |
 | `GPL-2.0-only` | error | concrete disallowed license |
 | `LicenseRef-scancode-unknown` | warning | only uncertain/unknown licenses |
 
