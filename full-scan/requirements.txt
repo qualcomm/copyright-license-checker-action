@@ -1,9 +1,9 @@
-scancode-toolkit==32.2.1
+scancode-toolkit==32.5.0
 pathspec==0.12.1
 # The <8.5 bound is load-bearing, not hygiene: click 8.5.0 made a flag's Option.default
 # a Sentinel.UNSET, and commoncode's cliutils._is_set decides "was this option used?" with
 # `value != param.default` -- so every boolean flag reads as used and scancode's
 # --strip-root/--full-root mutual exclusion trips on EVERY invocation (click.UsageError,
-# exit 2). The bug is in commoncode 32.5.2, the latest release, so this bound outlives the
-# planned scancode 32.5.0 upgrade; drop it only once commoncode fixes _is_set.
+# exit 2). Verified still required ON 32.5.0: it ships the same commoncode 32.5.2 (the latest
+# release), so the bound outlived the upgrade -- drop it only once commoncode fixes _is_set.
 click>=6.7,<8.5

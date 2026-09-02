@@ -15,13 +15,15 @@ Robust repo-license resolution for the full-repo scan.
 
 This is a full_scan-owned replacement for main.get_license (the PR path). It
 exists because scancode's verdict on a repo's own LICENSE file is not always
-trustworthy: scancode 32.2.1 mis-detects some standard OSS licenses as its
-catch-all "proprietary-license" at high confidence (e.g. the canonical
-"BSD 3-Clause License" template text -- as used by this repo's own LICENSE --
-detects as LicenseRef-scancode-proprietary-license, matched_length 219,
-score 99.1). When that (mis)detection becomes the repo's resolved license, the
-allowed-set is [proprietary] and every compliant file in the repo is flagged
-incompatible -- poisoning the whole baseline.
+trustworthy: it can report its catch-all "proprietary-license" for a standard OSS
+license at high confidence. When that (mis)detection becomes the repo's resolved
+license, the allowed-set is [proprietary] and every compliant file in the repo is
+flagged incompatible -- poisoning the whole baseline. The measured case was
+scancode 32.2.1 on the canonical "BSD 3-Clause License" template text -- as used
+by this repo's own LICENSE -- detected as LicenseRef-scancode-proprietary-license
+at matched_length 219, score 99.1. The pinned 32.5.0 gets that text right
+(BSD-3-Clause, matched_length 217), but the catch-all itself remains
+low-confidence by construction, so the distrust below stays.
 
 The resolution order is LICENSE file -> config map -> abort, with two full_scan-only
 differences from main.get_license:
@@ -35,10 +37,12 @@ differences from main.get_license:
     qualcomm-linux/eva-driver). A real detection is reported as its actual SPDX id
     (BSD variants are NOT normalized to a canonical BSD).
 
-Consequence to note: a genuine BSD-3-Clause LICENSE that scancode 32.2.1 mis-tags as
-proprietary -- this repo's own LICENSE, and qualcomm/commit-emails-check-action -- now
-resolves to None and aborts rather than being recovered. This is an accepted regression
-until the scancode version upgrade, which detects that text correctly as BSD-3-Clause.
+Consequence to note: a LICENSE file whose ONLY detection is the proprietary catch-all
+resolves to None and aborts rather than being recovered by a text heuristic (there is
+no such heuristic -- it was removed). Under scancode 32.2.1 that cost two real repos
+(this one and qualcomm/commit-emails-check-action, both genuine BSD-3-Clause); the
+32.5.0 pin detects that template correctly, so the abort is now reserved for LICENSE
+text scancode really cannot place.
 
 main.get_license / main.detect_license_from_file are intentionally left as-is
 (they belong to the PR/patch-scan path, owned separately); the same mis-resolution

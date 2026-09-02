@@ -38,10 +38,11 @@ def test_scancode_bsd_detection_passthrough(tmp_path, monkeypatch):
 
 def test_proprietary_detection_aborts(tmp_path, monkeypatch):
     # A proprietary catch-all is distrusted; with no config match -> abort (no
-    # fabricated default), recording the file for the "undetected" message. This
-    # also covers a genuine BSD-3 LICENSE that scancode 32.2.1 mis-tags as proprietary
-    # (this repo + qualcomm/commit-emails-check-action): with the text heuristic removed
-    # it aborts here until the scancode upgrade detects that text correctly as BSD-3.
+    # fabricated default), recording the file for the "undetected" message.
+    # Historically this also swallowed genuine BSD-3 LICENSE files that scancode
+    # 32.2.1 mis-tagged as proprietary (this repo + qualcomm/commit-emails-check-action);
+    # the 32.5.0 pin detects that template as BSD-3-Clause, so those repos resolve
+    # normally now and this test covers only the real low-confidence catch-all.
     _with_license_file(tmp_path, monkeypatch, "LicenseRef-scancode-proprietary-license")
     res = lr.resolve_license_details("owner/unconfigured-repo-xyz")
     assert res.license is None and res.source == "none"
@@ -180,10 +181,14 @@ def _fake_scancode(returncode=0, stderr="", results=None):
 
 def _one_file_results(expression):
     """A minimal scancode payload: one file with a single confident match."""
+    # 'license_expression_spdx' is the per-match field name the PINNED scancode
+    # (32.5.0, output format 4.1.0) emits -- hardcoded on purpose, so a rename
+    # fails here instead of silently degrading every scan. The predecessor name
+    # is exercised in test_full_scanner.py; see MATCH_SPDX_EXPRESSION_KEYS.
     return {"files": [{
         "type": "file",
         "license_detections": [{
-            "matches": [{"spdx_license_expression": expression, "matched_length": 50}],
+            "matches": [{"license_expression_spdx": expression, "matched_length": 50}],
         }],
     }]}
 

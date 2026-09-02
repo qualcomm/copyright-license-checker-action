@@ -114,6 +114,37 @@ def expression_allowed_by(expression: str, allowed: list) -> bool:
 # SPDX headers are never affected by this threshold.
 MIN_CONFIDENT_MATCH_LENGTH = 3
 
+# The match field carrying the SPDX expression, newest name FIRST. scancode
+# renamed it in output format 4.1.0 (scancode 32.5.0):
+# 'spdx_license_expression' -> 'license_expression_spdx'. Both names are read
+# because the rename is silent and its failure mode is severe: with neither key
+# found, every match is dropped, confident_license_expression returns None for
+# EVERY file, and the scan degrades into "No license header found" on all source
+# files while license_resolver aborts with "License Not Conclusively Detected" --
+# no error, no clue that the toolchain was the cause. Tolerating both names keeps
+# a 32.2.x toolchain working (a local venv can lag the pin) and makes the next
+# rename a one-line change here. Note the DETECTION-level key
+# ('license_expression_spdx') was NOT renamed; only the per-match one was.
+MATCH_SPDX_EXPRESSION_KEYS = ('license_expression_spdx', 'spdx_license_expression')
+
+
+def match_spdx_expression(match: dict) -> str:
+    """
+    The SPDX expression a single scancode match reports, across schema versions.
+
+    Args:
+        match (dict): One entry from a detection's 'matches' list.
+
+    Returns:
+        str: The SPDX expression, or None when the match carries none under any
+            known key (see MATCH_SPDX_EXPRESSION_KEYS).
+    """
+    for key in MATCH_SPDX_EXPRESSION_KEYS:
+        expression = match.get(key)
+        if expression:
+            return expression
+    return None
+
 
 def confident_license_expression(file_result: dict) -> str:
     """
@@ -138,7 +169,7 @@ def confident_license_expression(file_result: dict) -> str:
             long_enough = (match.get('matched_length') or 0) >= MIN_CONFIDENT_MATCH_LENGTH
             if not (is_spdx_tag or long_enough):
                 continue
-            expr = match.get('spdx_license_expression')
+            expr = match_spdx_expression(match)
             if expr:
                 kept.append(expr)
 
