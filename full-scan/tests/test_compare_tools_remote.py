@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
 import subprocess
+import urllib.error
+import urllib.parse
 
 import pytest
 
@@ -114,6 +116,55 @@ def test_list_org_repos_include_archived(monkeypatch):
     repos = ctr.list_org_repos("q", "", "", include_archived=True,
                                max_repo_size_mb=0)          # 0 disables size cap
     assert [r["repo_name"] for r in repos] == ["q/arch"]
+
+
+def test_list_org_repos_quotes_org_in_url(monkeypatch):
+    """An org name is a CLI value: it must not be able to reshape the API path."""
+    seen = []
+    monkeypatch.setattr(ctr, "_gh_get_json",
+                        lambda url, tok, ca: seen.append(url) or [])
+    ctr.list_org_repos("../../evil?x=1", "", "", include_archived=False,
+                       max_repo_size_mb=0)
+    path = urllib.parse.urlsplit(seen[0]).path
+    assert path == "/orgs/..%2F..%2Fevil%3Fx%3D1/repos"
+    # Still a plain api.github.com URL, so the allow-list accepts it.
+    ctr._assert_github_api_url(seen[0])
+
+
+# --- urllib hardening: https-only, GitHub-API-only ---------------------------
+
+def test_assert_github_api_url_allows_only_https_api_host():
+    ctr._assert_github_api_url(ctr.GITHUB_API + "/orgs/q/repos?page=1")
+    for bad in ["file:///etc/passwd",                  # the audited file:// risk
+                "http://api.github.com/orgs/q/repos",  # scheme downgrade
+                "https://evil.example.com/orgs/q/repos",
+                "https://api.github.com.evil.test/x"]:
+        with pytest.raises(ValueError):
+            ctr._assert_github_api_url(bad)
+
+
+def test_https_opener_registers_no_file_or_ftp_handler():
+    opener = ctr._https_opener("")
+    names = {type(h).__name__ for h in opener.handlers}
+    assert "FileHandler" not in names and "FTPHandler" not in names
+    assert "DataHandler" not in names
+    # HTTPError must still be raised for 4xx/5xx: list_org_repos' 403/404 branches
+    # (and the tests above) depend on it.
+    assert {"HTTPSHandler", "HTTPErrorProcessor",
+            "HTTPDefaultErrorHandler"} <= names
+
+
+def test_https_opener_cannot_fetch_file_urls(tmp_path):
+    secret = tmp_path / "secret.txt"
+    secret.write_text("do not read me", encoding="utf-8")
+    with pytest.raises(urllib.error.URLError):
+        ctr._https_opener("").open(secret.as_uri(), timeout=5)
+
+
+def test_gh_get_json_refuses_non_api_url():
+    """The allow-list runs before any network/handler work."""
+    with pytest.raises(ValueError):
+        ctr._gh_get_json("file:///etc/passwd", "", "")
 
 
 # --- build_aggregate_data ----------------------------------------------------

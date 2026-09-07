@@ -9,6 +9,7 @@ import logging
 import tempfile
 import subprocess
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -67,6 +68,10 @@ GITHUB_HOST = "github.com"
 GITHUB_API = "https://api.github.com"
 DEFAULT_ORGS = ["qualcomm", "qualcomm-linux", "qualcomm-qrb-ros", "audioreach", "quic"]
 
+# The only (scheme, host) pair _gh_get_json will open, derived from GITHUB_API so the
+# allow-list can never drift from the base URL. See _assert_github_api_url.
+_GITHUB_API_SCHEME, _GITHUB_API_NETLOC = urllib.parse.urlsplit(GITHUB_API)[:2]
+
 # Default per-repo size cap (MB) applied during org enumeration. Repos larger than
 # this are skipped: they are almost always giant mirrors (e.g. the qualcomm-linux
 # kernel trees, 2.5-3.8 GB) where a shallow clone + scancode run is impractical.
@@ -86,26 +91,82 @@ def _log(msg: str) -> None:
 # GitHub enumeration
 # --------------------------------------------------------------------------- #
 
+def _assert_github_api_url(url: str) -> None:
+    """
+    Reject any URL that is not an https URL on the GitHub API host.
+
+    A tripwire, not a filter: every URL we build is GITHUB_API plus quoted path/query
+    pieces, so it cannot fire today. It is here so a future caller passing a URL that
+    came from data (a `Link: rel="next"` header, a JSON field) fails loudly instead of
+    being fetched.
+
+    Args:
+        url (str): The URL about to be opened.
+
+    Raises:
+        ValueError: If the scheme/host is not the GitHub API's.
+    """
+    parsed = urllib.parse.urlsplit(url)
+    if (parsed.scheme, parsed.netloc) != (_GITHUB_API_SCHEME, _GITHUB_API_NETLOC):
+        raise ValueError(
+            f"refusing to fetch {url!r}: only "
+            f"{_GITHUB_API_SCHEME}://{_GITHUB_API_NETLOC} URLs are allowed.")
+
+
+def _https_opener(ca_bundle: str) -> urllib.request.OpenerDirector:
+    """
+    Build an opener that can only speak https.
+
+    urllib.request.urlopen() uses the default opener, which registers FileHandler and
+    FTPHandler -- a file:// URL reaching it really is fetched (measured: it reads the
+    local file), which is what makes handing urlopen() a dynamic value an audited
+    pattern. FileHandler/FTPHandler/DataHandler are absent here, making "urllib might
+    read a local file" untrue by construction rather than merely unlikely. The rest are
+    load-bearing: ProxyHandler for the corporate proxy, HTTPErrorProcessor +
+    HTTPDefaultErrorHandler for the urllib.error.HTTPError that list_org_repos' 403/404
+    handling needs, UnknownHandler so another scheme yields a clean URLError.
+
+    Args:
+        ca_bundle (str): CA bundle path for SSL, or "" for the system default.
+
+    Returns:
+        urllib.request.OpenerDirector: An opener limited to https.
+    """
+    ctx = ssl.create_default_context(cafile=ca_bundle) if ca_bundle else None
+    opener = urllib.request.OpenerDirector()
+    opener.add_handler(urllib.request.ProxyHandler())
+    opener.add_handler(urllib.request.HTTPSHandler(context=ctx))
+    opener.add_handler(urllib.request.HTTPRedirectHandler())
+    opener.add_handler(urllib.request.HTTPErrorProcessor())
+    opener.add_handler(urllib.request.HTTPDefaultErrorHandler())
+    opener.add_handler(urllib.request.UnknownHandler())
+    return opener
+
+
 def _gh_get_json(url: str, token: str, ca_bundle: str):
     """
     GET a GitHub API URL and return the parsed JSON body.
 
+    The URL is checked against the API host allow-list and fetched with an https-only
+    opener (see _assert_github_api_url / _https_opener), so neither the scheme nor the
+    host can be steered elsewhere.
+
     Args:
-        url (str): The API URL.
+        url (str): The API URL. Must be an https URL on the GitHub API host.
         token (str): GITHUB_TOKEN or "" (unauthenticated).
         ca_bundle (str): CA bundle path for SSL, or "" for the system default.
 
     Returns:
         The decoded JSON (list or dict).
     """
+    _assert_github_api_url(url)
     req = urllib.request.Request(url, headers={
         "Accept": "application/vnd.github+json",
         "User-Agent": "copyright-license-checker-compare-tools",
     })
     if token:
         req.add_header("Authorization", f"token {token}")
-    ctx = ssl.create_default_context(cafile=ca_bundle) if ca_bundle else None
-    with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:  # nosec B310
+    with _https_opener(ca_bundle).open(req, timeout=30) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -140,8 +201,11 @@ def list_org_repos(org: str, token: str, ca_bundle: str,
     repos = []
     page = 1
     while True:
-        url = (f"{GITHUB_API}/orgs/{org}/repos"
-               f"?type={repo_type}&per_page=100&page={page}")
+        # quote()/urlencode() the caller-supplied org and type: an org name is a CLI
+        # value, so pasting it raw would let "a/b" or "../.." reshape the API path.
+        url = (f"{GITHUB_API}/orgs/{urllib.parse.quote(org, safe='')}/repos?"
+               + urllib.parse.urlencode({"type": repo_type, "per_page": 100,
+                                         "page": page}))
         try:
             batch = _gh_get_json(url, token, ca_bundle)
         except urllib.error.HTTPError as exc:
