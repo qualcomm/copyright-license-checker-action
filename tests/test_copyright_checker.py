@@ -38,7 +38,7 @@ def make_change(
 
     Args:
         content: Diff content for the file.
-        change_type: One of ADDED/MODIFIED/DELETED/RENAMED.
+        change_type: One of ADDED/MODIFIED/DELETED/RENAMED/RENAMED_MODIFIED.
         path_name: File path.
         file_type: Either 'source' or 'binary'.
 
@@ -178,9 +178,8 @@ class TestAllowedTransitions(unittest.TestCase):
 
 class TestChangeTypeCoverageGaps(unittest.TestCase):
     """
-    Documents pre-existing coverage gaps: only MODIFIED changes are checked for
-    copyright deletions. ADDED, DELETED and RENAMED changes are not. These tests
-    assert current behavior rather than desired behavior.
+    Whole-file deletions and pure renames are not copyright checked. Renamed
+    files carrying content changes receive the same checks as modifications.
     """
 
     def test_added_change_type_is_not_copyright_checked(self):
@@ -196,10 +195,18 @@ class TestChangeTypeCoverageGaps(unittest.TestCase):
         self.assertEqual(checker.run(), {})
 
     def test_renamed_change_type_is_not_copyright_checked(self):
-        """RENAMED changes are not copyright checked."""
+        """Pure RENAMED changes are not copyright checked."""
         content = "-Copyright (c) 2019 Some Other Author.\n"
         checker = CopyrightChecker(make_patch([make_change(content, change_type="RENAMED")]))
         self.assertEqual(checker.run(), {})
+
+    def test_renamed_modified_change_type_is_copyright_checked(self):
+        """RENAMED_MODIFIED changes receive copyright deletion checks."""
+        content = "-Copyright (c) 2019 Some Other Author.\n"
+        checker = CopyrightChecker(
+            make_patch([make_change(content, change_type="RENAMED_MODIFIED")])
+        )
+        self.assertIn("src/foo.c", checker.run())
 
 
 if __name__ == "__main__":
