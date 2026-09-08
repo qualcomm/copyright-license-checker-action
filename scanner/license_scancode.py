@@ -259,7 +259,7 @@ class LicenseChecker:
             deleted_licenses = license_results.get((idx, "deleted"), "")
 
             issues = []
-            if change["change_type"] == "MODIFIED" or change["change_type"] == "ADDED":
+            if change["change_type"] in ("MODIFIED", "RENAMED_MODIFIED", "ADDED"):
                 # Check if licenses changed
                 if added_licenses and deleted_licenses and added_licenses != deleted_licenses:
                     # Only flag if the new license is NOT permissive

@@ -100,7 +100,7 @@ class CopyrightChecker:
             added_copyrights, deleted_copyrights = self.detect_copyright_changes(change["content"])
 
             issues = []
-            if change["change_type"] == "MODIFIED":
+            if change["change_type"] in ("MODIFIED", "RENAMED_MODIFIED"):
                 added_copyrights_set = {
                     normalized: original for original, normalized in added_copyrights
                 }

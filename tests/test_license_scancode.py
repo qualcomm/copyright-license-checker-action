@@ -55,7 +55,7 @@ def make_change(
 
     Args:
         content: Diff content for the file.
-        change_type: One of ADDED/MODIFIED/DELETED/RENAMED.
+        change_type: One of ADDED/MODIFIED/DELETED/RENAMED/RENAMED_MODIFIED.
         path_name: File path.
         file_type: Either 'source' or 'binary'.
 
@@ -263,6 +263,16 @@ class TestRunLicenseRules(ScancodeMockMixin, unittest.TestCase):
         """Swapping a permissive license for a copyleft one is flagged."""
         flagged = self.run_checker(
             [make_change("+GPL text\n-MIT text\n")],
+            {"0_added.txt": "GPL-2.0-only", "0_deleted.txt": "MIT"},
+        )
+        self.assertIn(
+            "License deleted: MIT and license added: GPL-2.0-only", flagged["src/foo.c"][0]
+        )
+
+    def test_renamed_modified_license_change_is_flagged(self):
+        """A renamed-and-modified file receives normal license checks."""
+        flagged = self.run_checker(
+            [make_change("+GPL text\n-MIT text\n", change_type="RENAMED_MODIFIED")],
             {"0_added.txt": "GPL-2.0-only", "0_deleted.txt": "MIT"},
         )
         self.assertIn(
