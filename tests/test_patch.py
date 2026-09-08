@@ -69,6 +69,12 @@ class TestPatchChangeTypes(PatchTestCase):
         patch = self.parse(patches.RENAMED_SOURCE_FILE)
         self.assertEqual(patch.changes[0]["change_type"], "RENAMED")
 
+    def test_renamed_file_with_hunks_is_renamed_modified(self):
+        """A rename with content hunks is classified as RENAMED_MODIFIED."""
+        patch = self.parse(patches.RENAMED_MODIFIED_SOURCE_FILE)
+        self.assertEqual(patch.changes[0]["change_type"], "RENAMED_MODIFIED")
+        self.assertEqual(patch.changes[0]["path_name"], "src/new_name.c")
+
     def test_plain_diff_is_modified(self):
         """A diff with no mode/rename headers defaults to MODIFIED."""
         patch = self.parse(patches.MODIFIED_WITH_ADDED_COPYRIGHT)
