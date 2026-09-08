@@ -21,10 +21,9 @@ runs:
     - name: Install dependencies
       env:
         ACTION_PATH: ${{ github.action_path }}
-      # --only-binary=lxml: scancode-toolkit depends on lxml, whose sdist needs
-      # the libxml2/libxslt development headers that runners do not ship. Refuse
-      # the sdist so a missing wheel fails fast and legibly instead of dying part
-      # way through a C build.
+      # --only-binary=lxml: the lxml pin has a runner-compatible wheel, and its
+      # sdist needs libxml2/libxslt development headers. Refuse sdists so a
+      # packaging/platform mismatch fails fast instead of starting a C build.
       run: |
         python -m pip install --upgrade pip
         pip install --only-binary=lxml -r "$ACTION_PATH/requirements.txt"

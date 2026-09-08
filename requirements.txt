@@ -1,2 +1,6 @@
 scancode-toolkit==32.5.0
+# ScanCode permits newer lxml releases, but some newer releases may resolve to
+# an sdist on the action runner. Keep installation wheel-only and use a release
+# with a CPython 3.12 manylinux wheel so libxml2/libxslt headers are not needed.
+lxml==5.3.0
 pathspec==0.12.1
