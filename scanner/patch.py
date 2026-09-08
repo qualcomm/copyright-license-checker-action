@@ -41,7 +41,10 @@ class Patch:
             elif change_type and change_type.group(1) == "deleted":
                 change_type = "DELETED"
             elif re.search("rename from .*\nrename to .*", file_change, re.MULTILINE):
-                change_type = "RENAMED"
+                # A pure rename has no hunks. A rename with content changes
+                # must receive the same downstream checks as a modification.
+                has_content_hunks = re.search(r"^@@ ", file_change, re.MULTILINE)
+                change_type = "RENAMED_MODIFIED" if has_content_hunks else "RENAMED"
             else:
                 change_type = "MODIFIED"
 

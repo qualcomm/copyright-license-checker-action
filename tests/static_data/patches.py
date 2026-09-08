@@ -77,6 +77,22 @@ rename from src/old_name.c
 rename to src/new_name.c
 """
 
+# A renamed source file with content changes (rename metadata plus hunks).
+RENAMED_MODIFIED_SOURCE_FILE = """diff --git a/src/old_name.c b/src/new_name.c
+similarity index 90%
+rename from src/old_name.c
+rename to src/new_name.c
+index 1234567..89abcde 100644
+--- a/src/old_name.c
++++ b/src/new_name.c
+@@ -1,4 +1,4 @@
+ /*
+- * Copyright (c) 2019 Some Other Author. All rights reserved.
++ * Copyright (c) 2024 Qualcomm Technologies, Inc. and/or its subsidiaries.
+  * SPDX-License-Identifier: BSD-3-Clause-Clear
+  */
+"""
+
 # A binary file change.
 BINARY_FILE = """diff --git a/assets/logo.png b/assets/logo.png
 new file mode 100644
