@@ -142,6 +142,18 @@ The action allows the following copyright transition:
 
 ---
 
+## Change-Type Coverage
+
+License and copyright checks apply to added and modified files. A whole-file
+deletion is intentionally not treated as a license or copyright-removal
+violation because the file and its contents are no longer present.
+
+Pure renames are not checked because they contain no content changes. A rename
+that includes diff hunks is treated as a modification and receives the normal
+license and copyright checks for modified files.
+
+---
+
 ## Non-Blocking Warnings
 
 The following scenarios generate **WARNINGS** but do NOT block the build:
