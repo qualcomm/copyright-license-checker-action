@@ -6,8 +6,11 @@ subprocess.run and the JSON file it writes. That keeps the suite fast and avoids
 depending on the multi-hundred-megabyte scancode-toolkit package.
 """
 
+import json
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock
+from unittest.mock import patch as mock_patch
 
 from scanner.license_scancode import LicenseChecker
 from tests.scancode_mock import scancode_mock_patcher
@@ -85,7 +88,7 @@ class TestIsSourceFile(unittest.TestCase):
 
     def setUp(self):
         """Create a checker with an empty patch."""
-        self.checker = LicenseChecker(make_patch_obj([]), "org/repo", PERMISSIVE)
+        self.checker = LicenseChecker(make_patch_obj([]), PERMISSIVE)
 
     def test_known_source_extensions(self):
         """Recognized code extensions are source files."""
@@ -119,7 +122,7 @@ class TestDetectLicensesBatch(ScancodeMockMixin, unittest.TestCase):
     def test_added_and_deleted_are_scanned_separately(self):
         """Added and deleted line groups get independent results."""
         self.install_scancode_mock({"0_added.txt": "MIT", "0_deleted.txt": "BSD-3-Clause"})
-        checker = LicenseChecker(make_patch_obj([]), "org/repo", PERMISSIVE)
+        checker = LicenseChecker(make_patch_obj([]), PERMISSIVE)
         results = checker.detect_licenses_batch(
             [make_change("+MIT license text\n-BSD license text\n")]
         )
@@ -129,15 +132,39 @@ class TestDetectLicensesBatch(ScancodeMockMixin, unittest.TestCase):
     def test_empty_content_is_skipped(self):
         """A change with no content produces no scan results."""
         self.install_scancode_mock({})
-        checker = LicenseChecker(make_patch_obj([]), "org/repo", PERMISSIVE)
+        checker = LicenseChecker(make_patch_obj([]), PERMISSIVE)
         self.assertEqual(checker.detect_licenses_batch([make_change(None)]), {})
 
     def test_no_detection_omits_entry(self):
         """A scanned file with no license detections yields a falsy result."""
         self.install_scancode_mock({"0_added.txt": None})
-        checker = LicenseChecker(make_patch_obj([]), "org/repo", PERMISSIVE)
+        checker = LicenseChecker(make_patch_obj([]), PERMISSIVE)
         results = checker.detect_licenses_batch([make_change("+just some code\n")])
         self.assertFalse(results.get((0, "added")))
+
+    def test_multiple_changes_share_a_single_subprocess_call(self):
+        """
+        All changes are batched into one scancode invocation, not one
+        subprocess.run per change.
+        """
+
+        def fake_run(cmd, **_kwargs):
+            output_file = cmd[cmd.index("--json-pp") + 1]
+            Path(output_file).write_text(json.dumps({"files": []}), encoding="utf-8")
+            return MagicMock(returncode=0)
+
+        checker = LicenseChecker(make_patch_obj([]), PERMISSIVE)
+        with mock_patch(
+            "scanner.license_scancode.subprocess.run", side_effect=fake_run
+        ) as run_mock:
+            checker.detect_licenses_batch(
+                [
+                    make_change("+MIT text\n"),
+                    make_change("+Apache text\n"),
+                    make_change("-BSD text\n"),
+                ]
+            )
+        self.assertEqual(run_mock.call_count, 1)
 
 
 class TestRunLicenseRules(ScancodeMockMixin, unittest.TestCase):
@@ -153,11 +180,12 @@ class TestRunLicenseRules(ScancodeMockMixin, unittest.TestCase):
             allowed: Allowed license list; defaults to the permissive set.
 
         Returns:
-            The flagged-files dictionary.
+            The blocking-files dictionary.
         """
         self.install_scancode_mock(detections)
-        checker = LicenseChecker(make_patch_obj(changes), "org/repo", allowed or PERMISSIVE)
-        return checker.run()
+        checker = LicenseChecker(make_patch_obj(changes), allowed or PERMISSIVE)
+        flagged, _warnings = checker.run()
+        return flagged
 
     def test_incompatible_license_added_is_flagged(self):
         """Adding a copyleft license to a permissive repo is flagged."""
@@ -225,8 +253,8 @@ class TestRunLicenseRules(ScancodeMockMixin, unittest.TestCase):
 
     def test_no_source_files_returns_empty(self):
         """With no source changes, run() short-circuits."""
-        checker = LicenseChecker(make_patch_obj([]), "org/repo", PERMISSIVE)
-        self.assertEqual(checker.run(), {})
+        checker = LicenseChecker(make_patch_obj([]), PERMISSIVE)
+        self.assertEqual(checker.run(), ({}, {}))
 
 
 class TestRunChangeTypeCoverageGaps(ScancodeMockMixin, unittest.TestCase):
@@ -241,20 +269,18 @@ class TestRunChangeTypeCoverageGaps(ScancodeMockMixin, unittest.TestCase):
         self.install_scancode_mock({"0_deleted.txt": "MIT"})
         checker = LicenseChecker(
             make_patch_obj([make_change("-MIT text\n", change_type="DELETED")]),
-            "org/repo",
             PERMISSIVE,
         )
-        self.assertEqual(checker.run(), {})
+        self.assertEqual(checker.run(), ({}, {}))
 
     def test_renamed_change_type_is_not_license_checked(self):
         """RENAMED changes are not license-checked."""
         self.install_scancode_mock({"0_deleted.txt": "MIT"})
         checker = LicenseChecker(
             make_patch_obj([make_change("-MIT text\n", change_type="RENAMED")]),
-            "org/repo",
             PERMISSIVE,
         )
-        self.assertEqual(checker.run(), {})
+        self.assertEqual(checker.run(), ({}, {}))
 
 
 class TestLicenseComparisonFix(ScancodeMockMixin, unittest.TestCase):
@@ -271,11 +297,55 @@ class TestLicenseComparisonFix(ScancodeMockMixin, unittest.TestCase):
         self.install_scancode_mock({"0_added.txt": "TIM", "0_deleted.txt": "MIT"})
         checker = LicenseChecker(
             make_patch_obj([make_change("+TIM text\n-MIT text\n")]),
-            "org/repo",
             PERMISSIVE,
         )
-        flagged = checker.run()
+        flagged, _warnings = checker.run()
         self.assertIn("License deleted: MIT and license added: TIM", flagged["src/foo.c"][0])
+
+
+class TestRunSeverityRouting(ScancodeMockMixin, unittest.TestCase):
+    """LicenseChecker assigns warning versus blocking severity."""
+
+    def run_checker(self, changes: list, detections: dict) -> tuple:
+        """Install the ScanCode mock and return the checker result buckets."""
+        self.install_scancode_mock(detections)
+        return LicenseChecker(make_patch_obj(changes), PERMISSIVE).run()
+
+    def test_unknown_addition_is_a_warning(self):
+        """An unrecognized ScanCode reference does not block the action."""
+        flagged, warnings = self.run_checker(
+            [make_change("+unknown license\n")],
+            {"0_added.txt": "LicenseRef-scancode-unknown-license-reference"},
+        )
+        self.assertEqual(flagged, {})
+        self.assertIn("Incompatible license added", warnings["src/foo.c"][0])
+
+    def test_mixed_gpl_and_unknown_addition_is_blocking(self):
+        """A known incompatible component keeps a mixed expression blocking."""
+        flagged, warnings = self.run_checker(
+            [make_change("+license\n")],
+            {"0_added.txt": "GPL-2.0-only AND LicenseRef-scancode-unknown-license-reference"},
+        )
+        self.assertIn("src/foo.c", flagged)
+        self.assertEqual(warnings, {})
+
+    def test_solitary_proprietary_marker_is_blocking(self):
+        """The existing proprietary marker remains a blocking issue."""
+        flagged, warnings = self.run_checker(
+            [make_change("+license\n")],
+            {"0_added.txt": "LicenseRef-scancode-proprietary-license"},
+        )
+        self.assertIn("src/foo.c", flagged)
+        self.assertEqual(warnings, {})
+
+    def test_unknown_deletion_is_a_warning(self):
+        """Deletion-only ScanCode references preserve the legacy warning behavior."""
+        flagged, warnings = self.run_checker(
+            [make_change("-unknown license\n")],
+            {"0_deleted.txt": "LicenseRef-scancode-unknown-license-reference"},
+        )
+        self.assertEqual(flagged, {})
+        self.assertIn("License deleted", warnings["src/foo.c"][0])
 
 
 if __name__ == "__main__":

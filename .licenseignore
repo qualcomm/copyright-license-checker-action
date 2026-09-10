@@ -2,8 +2,10 @@
 # exercise the checker itself; they are not real license grants.
 tests/**
 
-# These files contain license lists or mapping tables that scancode mistakes
-# for added licenses. All other logic files are checked by the action itself.
+# These implementation files intentionally contain license identifiers,
+# examples, or detection logic that scancode mistakes for added licenses.
+main.py
+scanner/license_scancode.py
 scanner/licenses.py
 scanner/config.py
 .licenseignore
