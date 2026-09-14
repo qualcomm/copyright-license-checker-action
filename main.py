@@ -251,7 +251,8 @@ def resolve_allowed_licenses(repo_name: str) -> tuple:
     if is_copyleft(repo_license):
         return repo_license, COPYLEFT_LICENSES
 
-    # Handle complex license expressions (e.g., "GPL-2.0-only AND GPL-2.0-or-later")
+    # Handle complex expressions (e.g., "Example-Copy-Left-2.0-only AND
+    # Example-Copy-Left-2.0-or-later").
     allowed_licenses = split_license_components(repo_license)
     return repo_license, allowed_licenses or [repo_license]
 
