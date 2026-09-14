@@ -225,8 +225,8 @@ class LicenseChecker:
         warnings_for_file = []
         if added_licenses and deleted_licenses and added_licenses != deleted_licenses:
             # Only flag if the new license is NOT allowed. This allows dual-license
-            # scenarios like "BSD-3-Clause OR GPL-2.0-only" where at least one option
-            # is allowed.
+            # scenarios like "Example-Permissive-3-Clause OR
+            # Example-Copy-Left-2.0-only" where at least one option is allowed.
             if not is_license_allowed(added_licenses, self.permissive_licenses):
                 message = (
                     f"License deleted: {deleted_licenses} and license added: " f"{added_licenses}"
