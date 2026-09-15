@@ -82,6 +82,38 @@ The action supports an optional `.licenseignore` file to exclude files or paths 
 - **[COMPLIANCE.md](COMPLIANCE.md)** - Comprehensive guide on build-blocking scenarios, compliance requirements, and troubleshooting
 - **[GitHub Action Repository](https://github.com/qualcomm/copyright-license-checker-action)** - Source code and latest updates
 
+### Real ScanCode container check
+
+The unit tests mock the ScanCode CLI. Use the dedicated Dockerfile to validate
+the real ScanCode installation and scan this repository's `LICENSE` file. The
+image installs the dependency pins from the checked-out branch's
+`requirements.txt`:
+
+```sh
+DOCKER_BUILDKIT=1 docker build \
+  --tag copyright-license-checker-scancode-test \
+  --file Dockerfile.scancode-test .
+docker run --rm copyright-license-checker-scancode-test
+```
+
+The build intentionally uses `--only-binary=lxml`, matching the action's
+wheel-only installation requirement. To validate a dependency update, check
+out the branch containing its updated `requirements.txt` pin before building.
+The image installs the native libarchive
+and libmagic prerequisites required by ScanCode. It also locates libarchive at
+runtime, so the same Dockerfile works on both `linux/amd64` and `linux/arm64`.
+
+On networks that intercept TLS, provide the trusted corporate CA bundle as a
+BuildKit secret; it is used only while installing packages and is not stored in
+the image:
+
+```sh
+DOCKER_BUILDKIT=1 docker build \
+  --secret id=corp_ca,src=/path/to/combined-ca-bundle.pem \
+  --tag copyright-license-checker-scancode-test \
+  --file Dockerfile.scancode-test .
+```
+
 ## Copyright and License
 
 ```text
