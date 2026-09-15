@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1
+FROM python:3.12-slim-bookworm
+
+WORKDIR /workspace
+COPY requirements.txt ./requirements.txt
+
+RUN --mount=type=secret,id=corp_ca,required=false \
+    apt-get update \
+    && apt-get install --yes --no-install-recommends libarchive-dev libmagic1 libmagic-mgc \
+    && rm -rf /var/lib/apt/lists/* \
+    && if [ -s /run/secrets/corp_ca ]; then \
+        PIP_CERT=/run/secrets/corp_ca python -m pip install --no-cache-dir --only-binary=lxml \
+          -r requirements.txt; \
+       else \
+        python -m pip install --no-cache-dir --only-binary=lxml \
+          -r requirements.txt; \
+       fi
+
+COPY LICENSE ./LICENSE
+
+# ScanCode's PyPI dependencies use the system libarchive in this minimal image.
+# Resolve the library path at runtime so the image works on both amd64 and arm64.
+CMD ["sh", "-ceu", "export LD_PRELOAD=\"$(ldconfig -p | awk '/libarchive\\.so/{print $NF; exit}')\"; scancode --version; scancode --license --strip-root --quiet --json-pp - LICENSE"]
