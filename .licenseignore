@@ -6,4 +6,10 @@ tests/**
 # for added licenses. All other logic files are checked by the action itself.
 scanner/licenses.py
 scanner/config.py
+
+# The action's scanner implementation embeds detection signatures that its
+# own checks identify as proprietary licenses or removed copyright text.
+scanner/license_scancode.py
+scanner/copyright_checker.py
+main.py
 .licenseignore
