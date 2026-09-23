@@ -95,6 +95,8 @@ class TestIgnoreConfigMatching(IgnoreConfigTestCase):
         config = IgnoreConfig(str(repository_ignore))
 
         for file_path in (
+            "scanner/licenses.py",
+            "scanner/config.py",
             "scanner/license_scancode.py",
             "scanner/copyright_checker.py",
             "main.py",
