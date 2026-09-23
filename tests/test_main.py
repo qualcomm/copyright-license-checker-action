@@ -7,6 +7,7 @@ and the main entry point wiring.
 
 import contextlib
 import io
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -237,6 +238,41 @@ class TestMainEntryPoint(LicenseFileTestCase):
                 with self.assertRaises(SystemExit) as caught:
                     main.main()
         return buffer.getvalue(), caught.exception.code
+
+    def test_blocking_issues_emit_error_annotations(self):
+        """Blocking issues create file-level GitHub Actions errors."""
+        with mock_patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}):
+            output, _ = self.run_main(
+                ["main.py", "pr.patch", "org/repo"],
+                {"src/a.c": ["Incompatible license added: GPL-2.0-only"]},
+                {"src/b.c": ["Copyright deletions detected"]},
+            )
+        self.assertIn("::error file=src/a.c::Incompatible license added: GPL-2.0-only", output)
+        self.assertIn("::error file=src/b.c::Copyright deletions detected", output)
+
+    def test_non_blocking_issues_emit_warning_annotations(self):
+        """Non-blocking issues create file-level GitHub Actions warnings."""
+        with mock_patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}):
+            output, _ = self.run_main(
+                ["main.py", "pr.patch", "org/repo"],
+                {},
+                {},
+                {"src/a.c": ["License detection needs review"]},
+            )
+        self.assertIn("::warning file=src/a.c::License detection needs review", output)
+
+    def test_workflow_annotation_values_are_escaped(self):
+        """Annotation paths and messages cannot inject workflow commands."""
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            main.emit_workflow_annotations(
+                {"src/a,b:c%\n.c": {"license_issues": ["bad%\nissue"], "copyright_issues": []}},
+                {},
+            )
+        self.assertEqual(
+            output.getvalue(),
+            "::error file=src/a%2Cb%3Ac%25%0A.c::bad%25%0Aissue\n",
+        )
 
     def test_clean_run_exits_zero(self):
         """With no issues from either checker, main() exits 0."""

@@ -227,6 +227,31 @@ def beautify_output(
     print("\n".join(output))
 
 
+def _escape_workflow_command(value: str, is_property: bool = False) -> str:
+    """Escape a value for a GitHub Actions workflow command."""
+    escaped = value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    if is_property:
+        escaped = escaped.replace(":", "%3A").replace(",", "%2C")
+    return escaped
+
+
+def emit_workflow_annotations(flagged_files: dict, warning_files: dict) -> None:
+    """
+    Emit GitHub Actions annotations for every reported issue.
+
+    Args:
+        flagged_files: Files with blocking license or copyright issues.
+        warning_files: Files with non-blocking license issues.
+    """
+    for level, files in (("error", flagged_files), ("warning", warning_files)):
+        for file_path, issues in files.items():
+            escaped_path = _escape_workflow_command(file_path, is_property=True)
+            for issue_type in ("license_issues", "copyright_issues"):
+                for issue in issues[issue_type]:
+                    escaped_issue = _escape_workflow_command(issue)
+                    print(f"::{level} file={escaped_path}::{escaped_issue}")
+
+
 def parse_args(argv: list) -> argparse.Namespace:
     """Parse the patch path and repository name from command-line arguments."""
     parser = argparse.ArgumentParser(description="Copyright and license compliance checker.")
@@ -312,6 +337,8 @@ def main() -> None:
     )
 
     beautify_output(flagged_files, warning_files, repo_license, LOG_PREFIX)
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        emit_workflow_annotations(flagged_files, warning_files)
 
     sys.exit(1 if flagged_files else 0)
 
