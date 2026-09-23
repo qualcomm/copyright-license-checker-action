@@ -89,6 +89,19 @@ class TestIgnoreConfigMatching(IgnoreConfigTestCase):
         self.assertTrue(config.is_excluded("third_party/b.c"))
         self.assertFalse(config.is_excluded("src/c.c"))
 
+    def test_repository_self_check_exclusions_are_retained(self):
+        """The action ignores known scanner false positives in its own code."""
+        repository_ignore = Path(__file__).resolve().parents[1] / ".licenseignore"
+        config = IgnoreConfig(str(repository_ignore))
+
+        for file_path in (
+            "scanner/license_scancode.py",
+            "scanner/copyright_checker.py",
+            "main.py",
+        ):
+            with self.subTest(file_path=file_path):
+                self.assertTrue(config.is_excluded(file_path))
+
 
 if __name__ == "__main__":
     unittest.main()
