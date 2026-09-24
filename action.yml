@@ -8,6 +8,16 @@ inputs:
   repo_name:
     description: 'The name of the github repository'
     required: true
+  mode:
+    description: "Compliance mode: 'opensource' or 'proprietary'"
+    required: false
+    default: 'opensource'
+  proprietary_entities:
+    description: >-
+      Comma-separated copyright-holder strings, in addition to the built-in
+      defaults, treated as internal authorship in proprietary mode
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -34,7 +44,14 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         PATCH_FILE: ${{ inputs.patch_file }}
         REPO_NAME: ${{ inputs.repo_name }}
-      run: python "$ACTION_PATH/main.py" "$PATCH_FILE" "$REPO_NAME"
+        MODE: ${{ inputs.mode }}
+        PROPRIETARY_ENTITIES: ${{ inputs.proprietary_entities }}
+      run: |
+        python "$ACTION_PATH/main.py" \
+          "$PATCH_FILE" \
+          "$REPO_NAME" \
+          --mode "$MODE" \
+          --proprietary-entities "$PROPRIETARY_ENTITIES"
       shell: bash
 
 branding:

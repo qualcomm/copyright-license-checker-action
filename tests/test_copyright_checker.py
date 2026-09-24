@@ -9,7 +9,12 @@ proprietary-mode work adds an independent entity-matching helper.
 import unittest
 from unittest.mock import MagicMock
 
-from scanner.copyright_checker import CopyrightChecker, normalize_string
+from scanner.copyright_checker import (
+    CopyrightChecker,
+    DEFAULT_INTERNAL_ENTITIES,
+    has_internal_copyright,
+    normalize_string,
+)
 
 
 def make_patch(changes: list) -> MagicMock:
@@ -201,6 +206,71 @@ class TestChangeTypeCoverageGaps(unittest.TestCase):
         content = "-Copyright (c) 2019 Some Other Author.\n"
         checker = CopyrightChecker(
             make_patch([make_change(content, change_type="RENAMED_MODIFIED")])
+        )
+        self.assertIn("src/foo.c", checker.run())
+
+
+class TestHasInternalCopyright(unittest.TestCase):
+    """
+    has_internal_copyright is independent of the QUIC -> QTI transition exception.
+    """
+
+    def test_short_qualcomm_form_matches_by_default(self):
+        """The short 'Qualcomm Technologies, Inc.' form matches by default."""
+        content = "+Copyright (c) 2024 Qualcomm Technologies, Inc.\n"
+        self.assertTrue(has_internal_copyright(content))
+
+    def test_long_qualcomm_form_matches_by_default(self):
+        """The long 'and/or its subsidiaries' form also matches by default."""
+        content = "+Copyright (c) 2024 Qualcomm Technologies, Inc. and/or its subsidiaries.\n"
+        self.assertTrue(has_internal_copyright(content))
+
+    def test_matches_a_deleted_copyright_line_too(self):
+        """A match on a deleted line counts, not just added lines."""
+        content = "-Copyright (c) 2024 Qualcomm Technologies, Inc.\n"
+        self.assertTrue(has_internal_copyright(content))
+
+    def test_unrelated_copyright_does_not_match(self):
+        """A copyright naming no configured entity does not match."""
+        content = "+Copyright (c) 2024 Some Other Company, Inc.\n"
+        self.assertFalse(has_internal_copyright(content))
+
+    def test_no_copyright_line_does_not_match(self):
+        """Content with no copyright-bearing line does not match."""
+        self.assertFalse(has_internal_copyright("+int x = 1;\n"))
+
+    def test_non_string_content_does_not_match(self):
+        """None content does not raise and returns False."""
+        self.assertFalse(has_internal_copyright(None))
+
+    def test_custom_entity_list_is_used_when_provided(self):
+        """A caller-supplied entity list replaces the default entirely."""
+        content = "+Copyright (c) 2024 Acme Robotics, Inc.\n"
+        self.assertFalse(has_internal_copyright(content))
+        self.assertTrue(has_internal_copyright(content, entities=["Acme Robotics, Inc."]))
+
+    def test_default_entities_constant_has_both_forms(self):
+        """The exported default list documents both sanctioned forms."""
+        self.assertIn("Qualcomm Technologies, Inc.", DEFAULT_INTERNAL_ENTITIES)
+        self.assertIn(
+            "Qualcomm Technologies, Inc. and/or its subsidiaries", DEFAULT_INTERNAL_ENTITIES
+        )
+
+    def test_independent_of_quic_transition_exception(self):
+        """
+        Matching the short form must not relax the specific QUIC -> QTI transition rule.
+        """
+        content = "+Copyright (c) 2024 Qualcomm Technologies, Inc.\n"
+        self.assertTrue(has_internal_copyright(content))
+        checker = CopyrightChecker(
+            make_patch(
+                [
+                    make_change(
+                        "-Copyright (c) 2022 Qualcomm Innovation Center, Inc. "
+                        "All rights reserved.\n" + content
+                    )
+                ]
+            )
         )
         self.assertIn("src/foo.c", checker.run())
 
