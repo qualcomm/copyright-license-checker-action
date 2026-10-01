@@ -29,3 +29,8 @@ We follow a Coordinated Vulnerability Disclosure (CVD) process:
 - **Resolution**: We will work with you to resolve the issue and prepare a fix.
 
 - **Disclosure**: Once the fix is ready, we will disclose the vulnerability and notify affected users.
+
+## Additional Policy
+
+For Qualcomm's organization-level open source security policy, see the
+[Qualcomm Open Source Security Policy](https://github.com/qualcomm/.github/blob/main/SECURITY.md).
