@@ -79,6 +79,25 @@ The action will only fail the build if there are blocking errors. Warnings are i
 
 The action supports an optional `.licenseignore` file to exclude files or paths from license checks. Create a `.licenseignore` file at the repository root and list patterns (git‑style wildcards) for files that should be ignored.
 
+## Developing Agentic Workflows
+
+Agentic Workflows use a reviewable Markdown source file and a generated GitHub
+Actions lock file. For example,
+`.github/workflows/daily-malicious-code-scan.md` is the source for
+`.github/workflows/daily-malicious-code-scan.lock.yml`. GitHub Actions runs the
+lock file; do not edit it by hand.
+
+After changing an Agentic Workflow source file, regenerate and validate its
+lock file:
+
+```sh
+gh aw compile daily-malicious-code-scan
+gh aw compile --validate
+```
+
+Commit both files. If compilation reports new actions or restricted secrets,
+review the generated change before rerunning the compiler with `--approve`.
+
 ## Documentation
 
 - **[COMPLIANCE.md](COMPLIANCE.md)** - Comprehensive guide on build-blocking scenarios, compliance requirements, and troubleshooting
