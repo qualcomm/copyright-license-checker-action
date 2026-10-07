@@ -166,10 +166,20 @@ class TestResolveInternalEntities(unittest.TestCase):
     def test_extra_entities_are_appended(self):
         """
         User-supplied entities are appended after the defaults. Entity names
-        must not contain commas, since that is the field separator.
+        are parsed as CSV fields.
         """
         result = main.resolve_internal_entities("Acme Robotics,Other Co")
         self.assertEqual(result, main.DEFAULT_INTERNAL_ENTITIES + ["Acme Robotics", "Other Co"])
+
+    def test_quoted_comma_in_entity_is_preserved(self):
+        """A CSV-quoted entity name retains its embedded comma."""
+        result = main.resolve_internal_entities('"Acme Corp, Inc.",Other Co')
+        self.assertEqual(result, main.DEFAULT_INTERNAL_ENTITIES + ["Acme Corp, Inc.", "Other Co"])
+
+    def test_malformed_csv_is_rejected(self):
+        """An unterminated quoted entity is rejected rather than partially parsed."""
+        with self.assertRaisesRegex(ValueError, "must be valid CSV"):
+            main.resolve_internal_entities('"Acme Corp, Inc.')
 
     def test_whitespace_around_entries_is_stripped(self):
         """Surrounding whitespace on each comma-separated entry is stripped."""

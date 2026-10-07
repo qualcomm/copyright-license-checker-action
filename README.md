@@ -52,7 +52,10 @@ jobs:
 | `patch_file` | *(required)* | Path to the patch file to check. |
 | `repo_name` | *(required)* | The name of the GitHub repository. |
 | `mode` | `opensource` | `opensource` or `proprietary`. See [Proprietary Mode](COMPLIANCE.md#proprietary-mode) for details. |
-| `proprietary_entities` | *(empty)* | Comma-separated extra copyright-holder strings treated as internal authorship in `proprietary` mode. |
+| `proprietary_entities` | *(empty)* | CSV extra copyright-holder strings treated as internal authorship in `proprietary` mode. Quote a name containing commas. |
+
+`proprietary_entities` uses standard CSV escaping. For example, provide an
+entity with a comma as `proprietary_entities: '"Acme Corp, Inc.",Other Co'`.
 
 ### Checking a Proprietary Codebase
 

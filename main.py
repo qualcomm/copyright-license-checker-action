@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import argparse
+import csv
 import logging
 import sys
 import os
@@ -283,8 +284,8 @@ def parse_args(argv: list) -> argparse.Namespace:
         "--proprietary-entities",
         default="",
         help=(
-            "Comma-separated copyright-holder strings, in addition to the "
-            "built-in defaults, treated as internal authorship in proprietary mode."
+            "CSV copyright-holder strings, in addition to the built-in defaults, "
+            "treated as internal authorship in proprietary mode. Quote names containing commas."
         ),
     )
     return parser.parse_args(argv)
@@ -292,16 +293,23 @@ def parse_args(argv: list) -> argparse.Namespace:
 
 def resolve_internal_entities(proprietary_entities: str) -> list:
     """
-    Resolve the internal-entity list from a comma-separated argument.
+    Resolve the internal-entity list from a CSV argument.
 
     Args:
-        proprietary_entities: Comma-separated extra entity strings, or "".
+        proprietary_entities: CSV-formatted extra entity strings, or "".
 
     Returns:
         DEFAULT_INTERNAL_ENTITIES extended with any user-supplied entries.
         Blank entries are dropped.
+
+    Raises:
+        ValueError: If proprietary_entities is not valid CSV.
     """
-    extra = [entity.strip() for entity in proprietary_entities.split(",") if entity.strip()]
+    try:
+        entries = next(csv.reader([proprietary_entities], skipinitialspace=True, strict=True))
+    except csv.Error as exc:
+        raise ValueError("proprietary_entities must be valid CSV") from exc
+    extra = [entity.strip() for entity in entries if entity.strip()]
     return DEFAULT_INTERNAL_ENTITIES + extra
 
 
