@@ -256,6 +256,24 @@ def emit_workflow_annotations(flagged_files: dict, warning_files: dict) -> None:
                     print(f"::{level} file={escaped_path}::{escaped_issue}")
 
 
+def _parse_proprietary_entities_csv(proprietary_entities: str) -> list:
+    """Return non-blank proprietary-entity fields parsed from a CSV value."""
+    try:
+        entries = next(csv.reader([proprietary_entities], skipinitialspace=True, strict=True))
+    except csv.Error as exc:
+        raise ValueError("proprietary_entities must be valid CSV") from exc
+    return [entity.strip() for entity in entries if entity.strip()]
+
+
+def _validate_proprietary_entities(proprietary_entities: str) -> str:
+    """Validate a proprietary-entity CSV argument for argparse."""
+    try:
+        _parse_proprietary_entities_csv(proprietary_entities)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+    return proprietary_entities
+
+
 def parse_args(argv: list) -> argparse.Namespace:
     """
     Parse command-line arguments.
@@ -268,8 +286,8 @@ def parse_args(argv: list) -> argparse.Namespace:
         proprietary_entities attributes.
 
     Raises:
-        SystemExit: If mode is not one of "opensource"/"proprietary", or
-            required positional arguments are missing.
+        SystemExit: If mode or proprietary_entities is invalid, or required
+            positional arguments are missing.
     """
     parser = argparse.ArgumentParser(description="Copyright and license compliance checker.")
     parser.add_argument("patch_file", help="Path to the patch file to check.")
@@ -283,6 +301,7 @@ def parse_args(argv: list) -> argparse.Namespace:
     parser.add_argument(
         "--proprietary-entities",
         default="",
+        type=_validate_proprietary_entities,
         help=(
             "CSV copyright-holder strings, in addition to the built-in defaults, "
             "treated as internal authorship in proprietary mode. Quote names containing commas."
@@ -305,11 +324,7 @@ def resolve_internal_entities(proprietary_entities: str) -> list:
     Raises:
         ValueError: If proprietary_entities is not valid CSV.
     """
-    try:
-        entries = next(csv.reader([proprietary_entities], skipinitialspace=True, strict=True))
-    except csv.Error as exc:
-        raise ValueError("proprietary_entities must be valid CSV") from exc
-    extra = [entity.strip() for entity in entries if entity.strip()]
+    extra = _parse_proprietary_entities_csv(proprietary_entities)
     return DEFAULT_INTERNAL_ENTITIES + extra
 
 

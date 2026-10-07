@@ -148,6 +148,18 @@ class TestParseArgs(unittest.TestCase):
         )
         self.assertEqual(args.proprietary_entities, "Acme Robotics,Other Co")
 
+    def test_malformed_proprietary_entities_exits_cleanly(self):
+        """Malformed proprietary-entity CSV fails through argparse, not a traceback."""
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit) as caught:
+                main.parse_args(
+                    ["pr.patch", "org/repo", "--proprietary-entities", '"Acme Corp, Inc.']
+                )
+        self.assertEqual(caught.exception.code, 2)
+        self.assertIn("argument --proprietary-entities", stderr.getvalue())
+        self.assertIn("must be valid CSV", stderr.getvalue())
+
     def test_missing_positional_exits(self):
         """Omitting a required positional argument fails through argparse."""
         with contextlib.redirect_stderr(io.StringIO()):
