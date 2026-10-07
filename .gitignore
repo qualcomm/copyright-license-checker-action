@@ -16,3 +16,6 @@ test*.patch
 .coverage
 coverage.xml
 htmlcov/
+
+# Local gh-aw action-resolution cache
+.github/aw/actions-lock.json
