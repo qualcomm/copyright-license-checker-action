@@ -79,9 +79,27 @@ class TestListRepoFiles(TempCwdMixin, unittest.TestCase):
         git_init_and_add({"a.c": "x\n", "vendor/b.c": "x\n", ".licenseignore": "vendor/\n"})
         self.assertEqual(list_repo_files(), [".licenseignore", "a.c"])
 
+    def test_binary_files_are_skipped(self):
+        """A file holding a NUL byte is binary and is not scanned."""
+        git_init_and_add({"a.c": "x\n"})
+        Path("image.bin").write_bytes(b"\x89PNG\0\0")
+        subprocess.run(["git", "add", "image.bin"], check=True)
+        self.assertEqual(list_repo_files(), ["a.c"])
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_submodules_are_skipped(self):
+        """A submodule is a directory on disk, so it is skipped rather than opened."""
+        git_init_and_add({"a.c": "x\n"})
+        gitlink = f"160000,{'1' * 40},vendor/sub"
+        subprocess.run(["git", "update-index", "--add", "--cacheinfo", gitlink], check=True)
+        Path("vendor/sub").mkdir(parents=True)
+        self.assertEqual(list_repo_files(), ["a.c"])
+
+    def test_symlinks_are_skipped(self):
+        """A symlink is skipped; the file it points to is scanned on its own."""
+        git_init_and_add({"a.c": "x\n"})
+        Path("link.c").symlink_to("a.c")
+        subprocess.run(["git", "add", "link.c"], check=True)
+        self.assertEqual(list_repo_files(), ["a.c"])
 
 
 if __name__ == "__main__":
