@@ -8,10 +8,15 @@ repository holds, so files committed before the action was enabled are covered
 too. Both drop EXCLUDED_EXTENSIONS and .licenseignore matches.
 """
 
+import os
 import subprocess
 
 from scanner.file_types import EXCLUDED_EXTENSIONS
 from scanner.ignore_config import IgnoreConfig
+
+# Binary files, such as images or compiled programs, are skipped. A file counts
+# as binary if any of its first 8000 bytes is zero, the same test Git uses.
+BINARY_SNIFF_BYTES = 8000
 
 
 def list_tracked_files() -> list:
@@ -34,11 +39,30 @@ def list_tracked_files() -> list:
     return [path for path in result.stdout.split("\0") if path]
 
 
+def is_text_file(path: str) -> bool:
+    """
+    Report whether a path is a regular, non-binary file.
+
+    A symlink is skipped because the file it points at is listed in its own
+    right, and a submodule is a directory, so neither is read.
+
+    Args:
+        path (str): A repository-relative path.
+
+    Returns:
+        bool: True if the path is a regular text file.
+    """
+    if os.path.islink(path) or not os.path.isfile(path):
+        return False
+    with open(path, "rb") as f:
+        return b"\0" not in f.read(BINARY_SNIFF_BYTES)
+
+
 def list_repo_files() -> list:
     """
     List the tracked files to check for license problems.
 
-    Every tracked file is listed, not just the SOURCE_EXTENSIONS ones,
+    Every tracked text file is listed, not just the SOURCE_EXTENSIONS ones,
     because an incompatible license matters wherever it appears. That mirrors
     LicenseChecker, which only limits its "a new file needs a license" check to
     source extensions and checks every other changed file for an incompatible
@@ -51,5 +75,7 @@ def list_repo_files() -> list:
     return [
         path
         for path in list_tracked_files()
-        if not path.endswith(EXCLUDED_EXTENSIONS) and not ignore_config.is_excluded(path)
+        if not path.endswith(EXCLUDED_EXTENSIONS)
+        and not ignore_config.is_excluded(path)
+        and is_text_file(path)
     ]
