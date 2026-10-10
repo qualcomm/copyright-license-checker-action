@@ -38,7 +38,10 @@ def detect_licenses(paths: list) -> dict:
             shutil.copyfile(path, target)
 
         output_file = os.path.join(tmpdir, "scancode_results.json")
-        subprocess.run(
+        # No check=True: scancode exits non-zero when a single file fails (for
+        # example, times out) but still reports the rest, recording the failure
+        # in that file's scan_errors.
+        result = subprocess.run(
             [
                 "scancode",
                 "--license",
@@ -48,10 +51,17 @@ def detect_licenses(paths: list) -> dict:
                 output_file,
                 input_dir,
             ],
-            check=True,
+            check=False,
+            capture_output=True,
+            text=True,
         )
-        with open(output_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        try:
+            with open(output_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as error:
+            raise RuntimeError(
+                f"scancode failed (exit code {result.returncode}): {result.stderr}"
+            ) from error
 
     return {entry["path"]: entry for entry in data.get("files", []) if entry["type"] == "file"}
 
@@ -107,6 +117,12 @@ class RepoLicenseChecker:
         Returns:
             tuple: (issues, warnings), each a list of messages.
         """
+        # A file scancode failed on (for example, timed out) has an unknown
+        # license, not a missing one, so report the failure itself.
+        if result.get("scan_errors"):
+            reason = " ".join(" ".join(result["scan_errors"]).split())
+            return [f"License scan failed: {reason}"], []
+
         # Use the expression for the whole file: the first detection alone
         # would miss a second license further down.
         expression = result.get("detected_license_expression_spdx")
