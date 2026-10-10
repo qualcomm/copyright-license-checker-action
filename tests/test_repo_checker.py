@@ -7,6 +7,8 @@ scancode stays mocked, as in the rest of the suite. The shared mock patches
 subprocess.run itself, so it also covers the call in scanner.repo_checker.
 """
 
+import json
+import subprocess
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch as mock_patch
@@ -48,6 +50,16 @@ class TestDetectLicenses(TempCwdMixin, unittest.TestCase):
         with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
             detect_licenses(["a/main.c", "b/main.c"])
         self.assertEqual(sorted(handed_over), ["a/main.c", "b/main.c"])
+
+    def test_missing_report_raises_with_scancode_output(self):
+        """If scancode writes no report, the error carries its exit code and stderr."""
+        Path("a.c").write_text("x\n", encoding="utf-8")
+        failed = MagicMock(returncode=2, stderr="Error: bad option")
+        with mock_patch(SUBPROCESS_RUN, return_value=failed):
+            with self.assertRaises(RuntimeError) as caught:
+                detect_licenses(["a.c"])
+        self.assertIn("exit code 2", str(caught.exception))
+        self.assertIn("Error: bad option", str(caught.exception))
 
 
 class TestRepoLicenseChecker(TempCwdMixin, unittest.TestCase):
@@ -135,6 +147,25 @@ class TestRepoLicenseChecker(TempCwdMixin, unittest.TestCase):
         with scancode_mock_patcher({}):
             flagged, _ = RepoLicenseChecker(["a.c", ".gitignore"], ALLOWED).run()
         self.assertEqual(list(flagged), ["a.c"])
+
+    def test_file_scancode_failed_on_blocks_with_reason(self):
+        """A file scancode failed on is reported as such, though scancode exits non-zero."""
+        Path("a.c").write_text("x\n", encoding="utf-8")
+
+        def fake_run(cmd, check=False, **_kwargs):
+            # scancode exits 1 when it times out on a file, yet still writes its
+            # report; subprocess.run raises on that exit only if check=True.
+            entry = {"path": "a.c", "type": "file", "scan_errors": ["ERROR: timeout\n"]}
+            Path(cmd[cmd.index("--json-pp") + 1]).write_text(
+                json.dumps({"files": [entry]}), encoding="utf-8"
+            )
+            if check:
+                raise subprocess.CalledProcessError(1, cmd)
+            return MagicMock(returncode=1)
+
+        with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
+            flagged, _ = RepoLicenseChecker(["a.c"], ALLOWED).run()
+        self.assertEqual(flagged["a.c"]["license_issues"], ["License scan failed: ERROR: timeout"])
 
     def test_no_files_skips_scancode(self):
         """With nothing to scan, scancode is not run at all."""
