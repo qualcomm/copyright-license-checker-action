@@ -86,6 +86,14 @@ class TestListRepoFiles(TempCwdMixin, unittest.TestCase):
         subprocess.run(["git", "add", "image.bin"], check=True)
         self.assertEqual(list_repo_files(), ["a.c"])
 
+    def test_binary_check_stops_at_8000_bytes(self):
+        """A zero byte among the first 8000 bytes makes a file binary; a later one does not."""
+        git_init_and_add({"a.c": "x\n"})
+        Path("nul_at_7999").write_bytes(b"x" * 7999 + b"\0")
+        Path("nul_at_8000").write_bytes(b"x" * 8000 + b"\0")
+        subprocess.run(["git", "add", "nul_at_7999", "nul_at_8000"], check=True)
+        self.assertEqual(list_repo_files(), ["a.c", "nul_at_8000"])
+
     def test_submodules_are_skipped(self):
         """A submodule is a directory on disk, so it is skipped rather than opened."""
         git_init_and_add({"a.c": "x\n"})
