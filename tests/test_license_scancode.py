@@ -436,6 +436,64 @@ class TestRunProprietaryMode(ScancodeMockMixin, unittest.TestCase):
         self.assertEqual(flagged, {})
         self.assertIn("Permissive open-source license added", warnings["src/foo.c"][0])
 
+    def test_retained_marker_preserves_or_alternatives_for_permissiveness(self):
+        """
+        Retaining a marker beside an OR expression preserves its alternatives.
+
+        The diff replaces a marker-only SPDX line with a compound SPDX
+        expression that retains the marker and introduces GPL or MIT. ScanCode
+        detects the added and deleted line groups separately. Removing only the
+        marker from the added-side expression must leave "GPL-2.0-only OR MIT",
+        rather than changing it to an AND expression that falsely blocks MIT.
+
+        @@ -1 +1 @@
+        -// SPDX-License-Identifier: LicenseRef-scancode-proprietary-license
+        +// SPDX-License-Identifier: (GPL-2.0-only OR MIT) AND MARKER
+
+        MARKER represents LicenseRef-scancode-proprietary-license.
+        """
+        flagged, warnings = self.run_checker(
+            [
+                make_change(
+                    "+// SPDX-License-Identifier: (GPL-2.0-only OR MIT) AND "
+                    f"{PROPRIETARY_LICENSE}\n"
+                    f"-// SPDX-License-Identifier: {PROPRIETARY_LICENSE}\n"
+                )
+            ],
+            {
+                "0_added.txt": f"(GPL-2.0-only OR MIT) AND {PROPRIETARY_LICENSE}",
+                "0_deleted.txt": PROPRIETARY_LICENSE,
+            },
+        )
+        self.assertEqual(flagged, {})
+        self.assertIn("Permissive open-source license added", warnings["src/foo.c"][0])
+
+    def test_adding_only_proprietary_marker_does_not_trigger_notice_reminder(self):
+        """
+        Adding a marker beside an unchanged OSS license is not a new OSS addition.
+
+        The diff replaces an MIT SPDX line with an expression that adds only the
+        proprietary marker. ScanCode detects both line groups independently;
+        after removing the marker, the added and deleted expressions are both
+        MIT. The change must not generate a NOTICE reminder for a license that
+        was already present.
+
+        @@ -1 +1 @@
+        -// SPDX-License-Identifier: MIT
+        +// SPDX-License-Identifier: MIT AND <proprietary marker>
+        """
+        flagged, warnings = self.run_checker(
+            [
+                make_change(
+                    f"+// SPDX-License-Identifier: MIT AND {PROPRIETARY_LICENSE}\n"
+                    "-// SPDX-License-Identifier: MIT\n"
+                )
+            ],
+            {"0_added.txt": f"MIT AND {PROPRIETARY_LICENSE}", "0_deleted.txt": "MIT"},
+        )
+        self.assertEqual(flagged, {})
+        self.assertEqual(warnings, {})
+
     def test_copyleft_added_while_proprietary_retained_still_blocks(self):
         """Excluding the retained marker does not excuse a copyleft addition."""
         flagged, warnings = self.run_checker(

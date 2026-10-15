@@ -288,7 +288,10 @@ class LicenseChecker:
             )
             target.append(message)
 
-        license_is_new_or_changed = added_licenses and added_licenses != deleted_licenses
+        license_is_new_or_changed = (
+            added_for_permissiveness
+            and added_for_permissiveness != self._without_proprietary_marker(deleted_licenses)
+        )
         if (
             proprietary
             and not proprietary_removed
@@ -307,13 +310,99 @@ class LicenseChecker:
 
     @staticmethod
     def _without_proprietary_marker(expression: str) -> str:
-        """Return expression components without the proprietary marker."""
-        remaining = [
-            license_id
-            for license_id in split_license_components(expression)
-            if license_id != PROPRIETARY_LICENSE
-        ]
-        return " AND ".join(remaining)
+        """Return an SPDX expression with the proprietary marker removed."""
+        tokens = LicenseChecker._tokenize_spdx_expression(expression)
+        if not tokens:
+            return ""
+
+        try:
+            parsed, index = LicenseChecker._parse_spdx_or_expression(tokens)
+        except ValueError:
+            return expression
+        if index != len(tokens):
+            return expression
+        return LicenseChecker._render_spdx_expression(
+            LicenseChecker._remove_spdx_component(parsed, PROPRIETARY_LICENSE)
+        )
+
+    @staticmethod
+    def _tokenize_spdx_expression(expression: str) -> list:
+        """Tokenize an SPDX expression while preserving multi-word license identifiers."""
+        tokens = []
+        license_words = []
+        for word in expression.replace("(", " ( ").replace(")", " ) ").split():
+            if word not in ("AND", "OR", "(", ")"):
+                license_words.append(word)
+                continue
+            if license_words:
+                tokens.append(" ".join(license_words))
+                license_words = []
+            tokens.append(word)
+        if license_words:
+            tokens.append(" ".join(license_words))
+        return tokens
+
+    @classmethod
+    def _parse_spdx_or_expression(cls, tokens: list, index: int = 0) -> tuple:
+        """Parse an SPDX OR expression into a tree and return its next token index."""
+        left, index = cls._parse_spdx_and_expression(tokens, index)
+        while index < len(tokens) and tokens[index] == "OR":
+            right, index = cls._parse_spdx_and_expression(tokens, index + 1)
+            left = ("OR", left, right)
+        return left, index
+
+    @classmethod
+    def _parse_spdx_and_expression(cls, tokens: list, index: int) -> tuple:
+        """Parse an SPDX AND expression into a tree and return its next token index."""
+        left, index = cls._parse_spdx_primary(tokens, index)
+        while index < len(tokens) and tokens[index] == "AND":
+            right, index = cls._parse_spdx_primary(tokens, index + 1)
+            left = ("AND", left, right)
+        return left, index
+
+    @classmethod
+    def _parse_spdx_primary(cls, tokens: list, index: int) -> tuple:
+        """Parse an SPDX license identifier or parenthesized expression."""
+        if index >= len(tokens):
+            raise ValueError("Unexpected end of SPDX expression")
+        if tokens[index] != "(":
+            return tokens[index], index + 1
+
+        expression, index = cls._parse_spdx_or_expression(tokens, index + 1)
+        if index >= len(tokens) or tokens[index] != ")":
+            raise ValueError("Unclosed SPDX expression parenthesis")
+        return expression, index + 1
+
+    @staticmethod
+    def _remove_spdx_component(expression: tuple | str, component: str) -> tuple | str | None:
+        """Remove one license identifier and collapse its enclosing expression."""
+        if isinstance(expression, str):
+            return None if expression == component else expression
+
+        operator, left, right = expression
+        left = LicenseChecker._remove_spdx_component(left, component)
+        right = LicenseChecker._remove_spdx_component(right, component)
+        if left is None:
+            return right
+        if right is None:
+            return left
+        return operator, left, right
+
+    @staticmethod
+    def _render_spdx_expression(expression: tuple | str | None, parent_precedence: int = 0) -> str:
+        """Render an SPDX expression tree with only precedence-required parentheses."""
+        if expression is None:
+            return ""
+        if isinstance(expression, str):
+            return expression
+
+        operator, left, right = expression
+        precedence = 1 if operator == "OR" else 2
+        rendered = (
+            f"{LicenseChecker._render_spdx_expression(left, precedence)} {operator} "
+            f"{LicenseChecker._render_spdx_expression(right, precedence)}"
+        )
+        return f"({rendered})" if precedence < parent_precedence else rendered
 
     @classmethod
     def _is_expected_internal_marking(cls, added_licenses: str, deleted_licenses: str) -> bool:
