@@ -73,7 +73,11 @@ In this mode, Qualcomm-authored files are expected to carry a proprietary rights
 ### License Detection
 This action detects licenses in the code changes and ensures that any added licenses are permissive and compliant with the repository's policies.
 
-**Uncertain License Handling**: When scancode detects uncertain or unknown licenses (any license containing `LicenseRef-scancode-unknown`), these are treated as **warnings** rather than blocking errors. This generic pattern matching catches all scancode unknown license variants (e.g., `LicenseRef-scancode-unknown`, `LicenseRef-scancode-unknown-license-reference`, etc.). The build will continue with a warning message, allowing you to review these cases manually without blocking the CI/CD pipeline.
+**Uncertain License Handling**: When scancode detects uncertain or unknown licenses (any license containing `LicenseRef-scancode-unknown`), added or replacement detections are treated as **warnings** rather than blocking errors. This generic pattern matching catches all scancode unknown license variants (e.g., `LicenseRef-scancode-unknown`, `LicenseRef-scancode-unknown-license-reference`, etc.). The build will continue with a warning message, allowing you to review these cases manually without blocking the CI/CD pipeline.
+
+In `mode: proprietary`, deleting a `LicenseRef-scancode-*` reference without a
+replacement license is a blocking error, so license-removal checks remain
+strict.
 
 ### Copyright Changes
 The action checks for any changes in copyright statements within the code and flags any deletions or modifications of existing copyright holders
@@ -95,7 +99,7 @@ The action identifies source files based on their extensions and ensures that ap
 ### Compliance Reporting
 The action provides a detailed report with two categories:
 - **🚨 BLOCKING ERRORS**: Issues that will fail the build (incompatible licenses, copyright deletions, etc.)
-- **⚠️ WARNINGS (Non-blocking)**: Uncertain or unknown license detections that won't block the build but should be reviewed
+- **⚠️ WARNINGS (Non-blocking)**: Uncertain or unknown added/replacement license detections that should be reviewed
 
 The action will only fail the build if there are blocking errors. Warnings are informational and allow the build to proceed.
 

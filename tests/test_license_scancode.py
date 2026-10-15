@@ -419,6 +419,15 @@ class TestRunProprietaryMode(ScancodeMockMixin, unittest.TestCase):
         self.assertIn("Proprietary license statement removed", flagged["src/foo.c"][0])
         self.assertEqual(warnings, {})
 
+    def test_unknown_deletion_blocks_in_proprietary_mode(self):
+        """Proprietary mode keeps deletion-only unknown ScanCode references strict."""
+        flagged, warnings = self.run_checker(
+            [make_change("-unknown license\n")],
+            {"0_deleted.txt": "LicenseRef-scancode-unknown-license-reference"},
+        )
+        self.assertIn("License deleted", flagged["src/foo.c"][0])
+        self.assertEqual(warnings, {})
+
     def test_removing_proprietary_marker_from_compound_expression_blocks(self):
         """Removing the marker from one component of a compound expression still blocks."""
         flagged, _warnings = self.run_checker(

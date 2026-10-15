@@ -278,8 +278,9 @@ class LicenseChecker:
             message = f"Incompatible license added: {added_licenses}"
             _route_license_message(message, added_licenses, issues, warnings_for_file)
         elif deleted_licenses and not added_licenses:
-            # Preserve the legacy main.py fallback for deletion-only messages:
-            # any ScanCode reference makes the issue a warning.
+            # Open-source mode preserves the legacy warning fallback for any
+            # ScanCode reference. Proprietary mode blocks all deletion-only
+            # detections to keep license-removal checks strict.
             message = f"License deleted: {deleted_licenses}"
             target = (
                 warnings_for_file
