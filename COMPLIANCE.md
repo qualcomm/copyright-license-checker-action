@@ -275,7 +275,10 @@ By default, this action assumes it is checking an open-source repository. Set `m
 | Input | Default | Description |
 |-------|---------|-------------|
 | `mode` | `opensource` | `opensource` or `proprietary`. Any other value fails immediately. |
-| `proprietary_entities` | *(empty)* | Comma-separated extra copyright-holder strings treated as internal authorship in addition to the built-in defaults. Entity names cannot contain commas. |
+| `proprietary_entities` | *(empty)* | CSV extra copyright-holder strings treated as internal authorship in addition to the built-in defaults. Quote names that contain commas. |
+
+`proprietary_entities` uses standard CSV escaping. For example, provide an
+entity with a comma as `proprietary_entities: '"Acme Corp, Inc.",Other Co'`.
 
 The built-in internal entities are `Qualcomm Technologies, Inc.` and `Qualcomm Technologies, Inc. and/or its subsidiaries`.
 
