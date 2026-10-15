@@ -4,3 +4,7 @@ scancode-toolkit==32.5.0
 # with a CPython 3.12 manylinux wheel so libxml2/libxslt headers are not needed.
 lxml==6.1.0
 pathspec==0.12.1
+# pluggy is an unpinned transitive dependency via plugincode. pluggy 1.7.0
+# rejects plugincode's hookspec modules ("did not find any 'pre_scan' hooks"),
+# so scancode-toolkit 32.5.0 fails at startup. Keep it below 1.7.
+pluggy<1.7
