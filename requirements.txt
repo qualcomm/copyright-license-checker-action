@@ -1,3 +1,5 @@
+# Direct runtime requirements. Regenerate requirements.lock with the command
+# recorded in its header after changing this file.
 scancode-toolkit==32.5.0
 # ScanCode permits newer lxml releases, but some newer releases may resolve to
 # an sdist on the action runner. Keep installation wheel-only and use a release

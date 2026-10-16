@@ -30,6 +30,17 @@ In general, contributors should develop on branches based off of `main` and pull
     ```
 
 1. Make your changes, add tests, and make sure the tests still pass.
+
+   Runtime dependency changes must update both `requirements.txt` and its
+   generated, hash-verified `requirements.lock`. Regenerate the lock for the
+   action's Python 3.12 Linux x86_64 runtime:
+
+    ```bash
+    ./scripts/update-lock.sh
+    ```
+
+   Pass `--upgrade` to refresh all transitive dependency versions.
+
 1. Commit your changes using the [DCO](http://developercertificate.org/). You can attest to the DCO by commiting with the **-s** or **--signoff** options or manually adding the "Signed-off-by":
 
     ```bash
