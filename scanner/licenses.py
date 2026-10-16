@@ -1,3 +1,6 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Shared license lists and SPDX-expression classification helpers."""
 
 PERMISSIVE_LICENSES = [
