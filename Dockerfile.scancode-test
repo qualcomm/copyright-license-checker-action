@@ -1,23 +1,25 @@
 # syntax=docker/dockerfile:1
+# ScanCode 32.5.0's extractcode-7z dependency publishes a Linux x86_64 wheel.
 FROM python:3.12-slim-bookworm
 
+COPY --from=ghcr.io/astral-sh/uv:0.11.16@sha256:440fd6477af86a2f1b38080c539f1672cd22acb1b1a47e321dba5158ab08864d /uv /uvx /bin/
+
 WORKDIR /workspace
-COPY requirements.txt ./requirements.txt
+COPY requirements.lock ./requirements.lock
 
 RUN --mount=type=secret,id=corp_ca,required=false \
     apt-get update \
-    && apt-get install --yes --no-install-recommends libarchive-dev libmagic1 libmagic-mgc \
+    && apt-get install --yes --no-install-recommends libarchive-dev libgomp1 libmagic1 libmagic-mgc \
     && rm -rf /var/lib/apt/lists/* \
     && if [ -s /run/secrets/corp_ca ]; then \
-        PIP_CERT=/run/secrets/corp_ca python -m pip install --no-cache-dir --only-binary=lxml \
-          -r requirements.txt; \
+        SSL_CERT_FILE=/run/secrets/corp_ca uv pip sync --system --strict --require-hashes --only-binary=lxml \
+          requirements.lock; \
        else \
-        python -m pip install --no-cache-dir --only-binary=lxml \
-          -r requirements.txt; \
+        uv pip sync --system --strict --require-hashes --only-binary=lxml requirements.lock; \
        fi
 
 COPY LICENSE ./LICENSE
 
 # ScanCode's PyPI dependencies use the system libarchive in this minimal image.
-# Resolve the library path at runtime so the image works on both amd64 and arm64.
+# Resolve the library path at runtime for the Linux x86_64 action target.
 CMD ["sh", "-ceu", "export LD_PRELOAD=\"$(ldconfig -p | awk '/libarchive\\.so/{print $NF; exit}')\"; scancode --version; scancode --license --strip-root --quiet --json-pp - LICENSE"]
