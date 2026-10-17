@@ -3,7 +3,7 @@
 """
 Module to check whole repository files for license issues.
 
-Where LicenseChecker judges the lines a patch adds and deletes, this judges
+Where the patch scan judges the lines a patch adds and deletes, this judges
 whole files as they stand. Both apply the same rules from scanner.licenses.
 """
 
@@ -29,8 +29,12 @@ def detect_licenses(paths: list) -> dict:
         dict: Path -> scancode's result for that file, for every file reported.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Copy under the original relative paths so scancode reports them back
-        # unchanged (--strip-root) and same-named files cannot collide.
+        # detect_licenses() copies the given files into a temporary directory, keeping their
+        # repository-relative paths, and runs ScanCode once on it. The files come from
+        # list_repo_files(), which already applies our rules (tracked files only, no
+        # excluded extensions, no .licenseignore matches, no binaries). Scanning a copy
+        # means ScanCode sees exactly that selection, so list_repo_files() stays the single
+        # source of truth for what gets checked.
         input_dir = os.path.join(tmpdir, "input")
         for path in paths:
             target = Path(input_dir, path)
@@ -127,7 +131,7 @@ class RepoLicenseChecker:
         # would miss a second license further down.
         expression = result.get("detected_license_expression_spdx")
         if not expression:
-            # Only source files have to carry a license, as in LicenseChecker.
+            # Only source files have to carry a license, as in the patch scan.
             missing = path.endswith(SOURCE_EXTENSIONS)
             return ([f"No license found in source file: {path}"] if missing else []), []
         if is_license_allowed(expression, self.allowed_licenses):

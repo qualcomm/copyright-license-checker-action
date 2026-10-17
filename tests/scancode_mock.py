@@ -15,16 +15,16 @@ def scancode_mock_patcher(detections: dict):
     Return a patcher that writes a ScanCode-shaped JSON report.
 
     Each fake file entry carries its license in two fields, because the
-    checkers read different ones:
+    patch scan and the full scan read different ones:
 
-    - license_detections (the list of detections): read by LicenseChecker
-      and main.py.
+    - license_detections (the list of detections): read by the patch scan
+      (main.py and scanner/license_scancode.py).
     - detected_license_expression_spdx (the license for the whole file):
       read by RepoLicenseChecker in scanner/repo_checker.py. Without it,
       RepoLicenseChecker would see every fake file as unlicensed.
 
-    LicenseChecker and main.py never read the second field, so adding it
-    does not change their tests.
+    The patch scan never reads the second field, so adding it does not
+    change its tests.
     """
 
     def fake_run(cmd, **_kwargs):
