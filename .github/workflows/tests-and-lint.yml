@@ -29,9 +29,11 @@ jobs:
           version: "0.11.16"
 
       - name: Verify locked dependencies
-        run: >-
-          uv pip sync --system --dry-run --strict --require-hashes
-          --only-binary=lxml requirements.lock
+        run: |
+          VENV_PATH="$RUNNER_TEMP/copyright-license-checker-lock-check"
+          uv venv --clear --python 3.12 "$VENV_PATH"
+          uv pip sync --python "$VENV_PATH/bin/python" \
+            --strict --require-hashes --only-binary=lxml requirements.lock
 
       - name: Check lock freshness
         run: |
