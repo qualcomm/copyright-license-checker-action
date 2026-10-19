@@ -33,26 +33,23 @@ runs:
       with:
         version: '0.11.16'
 
-    - name: Install dependencies
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-      # --only-binary=lxml: the lxml pin has a runner-compatible wheel, and its
-      # sdist needs libxml2/libxslt development headers. Refuse sdists so a
-      # packaging/platform mismatch fails fast instead of starting a C build.
-      run: |
-        uv pip sync --system --strict --require-hashes --only-binary=lxml \
-          "$ACTION_PATH/requirements.lock"
-      shell: bash
-
-    - name: Run checker
+    - name: Run checker in private environment
       env:
         ACTION_PATH: ${{ github.action_path }}
         PATCH_FILE: ${{ inputs.patch_file }}
         REPO_NAME: ${{ inputs.repo_name }}
         MODE: ${{ inputs.mode }}
         PROPRIETARY_ENTITIES: ${{ inputs.proprietary_entities }}
+      # --only-binary=lxml: the lxml pin has a runner-compatible wheel, and its
+      # sdist needs libxml2/libxslt development headers. Refuse sdists so a
+      # packaging/platform mismatch fails fast instead of starting a C build.
       run: |
-        python "$ACTION_PATH/main.py" \
+        VENV_PATH="$RUNNER_TEMP/copyright-license-checker-action-venv"
+        uv venv --clear --python 3.12 "$VENV_PATH"
+        uv pip sync --python "$VENV_PATH/bin/python" \
+          --strict --require-hashes --only-binary=lxml \
+          "$ACTION_PATH/requirements.lock"
+        PATH="$VENV_PATH/bin:$PATH" "$VENV_PATH/bin/python" "$ACTION_PATH/main.py" \
           "$PATCH_FILE" \
           "$REPO_NAME" \
           --mode "$MODE" \
