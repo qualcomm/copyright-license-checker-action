@@ -47,6 +47,7 @@ runs:
           --strict --require-hashes --only-binary=lxml \
           "$ACTION_PATH/requirements.lock"
         echo "venv_path=$VENV_PATH" >> "$GITHUB_OUTPUT"
+      shell: bash
 
     - name: Run checker
       env:
