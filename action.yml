@@ -42,11 +42,13 @@ runs:
       # packaging/platform mismatch fails fast instead of starting a C build.
       run: |
         VENV_PATH="$(mktemp -d "$RUNNER_TEMP/copyright-license-checker-action-XXXXXX")"
+        trap 'rm -rf -- "$VENV_PATH"' ERR
         uv venv --clear --python 3.12 "$VENV_PATH"
         uv pip sync --python "$VENV_PATH/bin/python" \
           --strict --require-hashes --only-binary=lxml \
           "$ACTION_PATH/requirements.lock"
         echo "venv_path=$VENV_PATH" >> "$GITHUB_OUTPUT"
+        trap - ERR
       shell: bash
 
     - name: Run checker
@@ -58,6 +60,7 @@ runs:
         PROPRIETARY_ENTITIES: ${{ inputs.proprietary_entities }}
         VENV_PATH: ${{ steps.prepare-private-environment.outputs.venv_path }}
       run: |
+        trap 'rm -rf -- "$VENV_PATH"' EXIT
         PATH="$VENV_PATH/bin:$PATH" "$VENV_PATH/bin/python" "$ACTION_PATH/main.py" \
           "$PATCH_FILE" \
           "$REPO_NAME" \
