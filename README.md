@@ -127,33 +127,66 @@ review the generated change before rerunning the compiler with `--approve`.
 - **[COMPLIANCE.md](COMPLIANCE.md)** - Comprehensive guide on build-blocking scenarios, compliance requirements, and troubleshooting
 - **[GitHub Action Repository](https://github.com/qualcomm/copyright-license-checker-action)** - Source code and latest updates
 
+### Runtime dependencies
+
+`requirements.txt` is the human-maintained list of direct runtime
+requirements. `requirements.lock` is the complete, hash-verified dependency
+graph for Python 3.12 on Linux x86_64, generated and installed with
+[uv](https://docs.astral.sh/uv/). The composite action installs only from the
+lock file.
+
+After changing `requirements.txt`, regenerate and commit the lock file:
+
+```sh
+./scripts/update-lock.sh
+```
+
+The script requires uv 0.11.16 and preserves the versions already recorded in
+the lock where possible. Run `./scripts/update-lock.sh --upgrade` to
+intentionally refresh the complete dependency graph.
+CI validates the committed lock and emits a warning when regeneration would
+change it; CI does not upgrade dependencies or fail solely because the lock is
+stale.
+
+On a network that intercepts TLS, use the trusted corporate bundle described
+below, for example:
+`SSL_CERT_FILE=/path/to/combined-ca-bundle.pem ./scripts/update-lock.sh`.
+
+Verify the locked installation without changing your environment:
+
+```sh
+uv pip sync --dry-run --strict --require-hashes --only-binary=lxml requirements.lock
+```
+
 ### Real ScanCode container check
 
 The unit tests mock the ScanCode CLI. Use the dedicated Dockerfile to validate
 the real ScanCode installation and scan this repository's `LICENSE` file. The
-image installs the dependency pins from the checked-out branch's
-`requirements.txt`:
+image installs the hash-verified dependencies from the checked-out branch's
+`requirements.lock` using uv. ScanCode's required `extractcode-7z` wheel is
+published for Linux x86_64, so build this validation image for that platform:
 
 ```sh
-DOCKER_BUILDKIT=1 docker build \
+DOCKER_BUILDKIT=1 docker build --platform linux/amd64 \
   --tag copyright-license-checker-scancode-test \
   --file Dockerfile.scancode-test .
-docker run --rm copyright-license-checker-scancode-test
+docker run --rm --platform linux/amd64 copyright-license-checker-scancode-test
 ```
 
 The build intentionally uses `--only-binary=lxml`, matching the action's
 wheel-only installation requirement. To validate a dependency update, check
-out the branch containing its updated `requirements.txt` pin before building.
-The image installs the native libarchive
-and libmagic prerequisites required by ScanCode. It also locates libarchive at
-runtime, so the same Dockerfile works on both `linux/amd64` and `linux/arm64`.
+out the branch containing its updated `requirements.txt` input and
+`requirements.lock` before building.
+The image installs the native libarchive, libgomp, and libmagic prerequisites
+required by ScanCode. It also locates libarchive at runtime. The image targets
+`linux/amd64`, matching the GitHub Action runtime.
 
 On networks that intercept TLS, provide the trusted corporate CA bundle as a
 BuildKit secret; it is used only while installing packages and is not stored in
 the image:
 
 ```sh
-DOCKER_BUILDKIT=1 docker build \
+DOCKER_BUILDKIT=1 docker build --platform linux/amd64 \
   --secret id=corp_ca,src=/path/to/combined-ca-bundle.pem \
   --tag copyright-license-checker-scancode-test \
   --file Dockerfile.scancode-test .
