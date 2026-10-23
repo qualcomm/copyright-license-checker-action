@@ -14,8 +14,9 @@ inputs:
     default: 'opensource'
   proprietary_entities:
     description: >-
-      Comma-separated copyright-holder strings, in addition to the built-in
-      defaults, treated as internal authorship in proprietary mode
+      CSV copyright-holder strings, in addition to the built-in defaults,
+      treated as internal authorship in proprietary mode. Quote names that
+      contain commas.
     required: false
     default: ''
 
