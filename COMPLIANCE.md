@@ -190,6 +190,11 @@ The action intelligently evaluates license expressions:
 2. If ANY license is a known incompatible license (GPL, AGPL, etc.) → **BLOCKING ERROR**
 3. Mixed uncertain licenses are treated as warnings to allow manual review
 
+**Mode note:** In `mode: proprietary`, deleting a `LicenseRef-scancode-*`
+reference without adding a replacement license is a **BLOCKING ERROR**. This
+keeps license-removal checks strict; uncertain additions and replacements still
+follow the warning rules above.
+
 **Example - Warning:**
 ```
 ⚠️ WARNINGS (Non-blocking):
