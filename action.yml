@@ -43,8 +43,8 @@ runs:
       run: |
         VENV_PATH="$(mktemp -d "$RUNNER_TEMP/copyright-license-checker-action-XXXXXX")"
         trap 'rm -rf -- "$VENV_PATH"' ERR
-        uv venv --clear --python 3.12 "$VENV_PATH"
-        uv pip sync --python "$VENV_PATH/bin/python" \
+        uv --no-config venv --clear --python 3.12 "$VENV_PATH"
+        uv --no-config pip sync --python "$VENV_PATH/bin/python" \
           --strict --require-hashes --only-binary=lxml \
           "$ACTION_PATH/requirements.lock"
         echo "venv_path=$VENV_PATH" >> "$GITHUB_OUTPUT"
