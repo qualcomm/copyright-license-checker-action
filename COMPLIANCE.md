@@ -63,30 +63,36 @@ The following scenarios will **BLOCK** your build and require remediation before
 
 ---
 
-### 3. License Change (Modification)
+### 3. Incompatible License Change (Modification)
 
 **Mode note:** In `mode: proprietary`, removing a proprietary rights statement is always a blocking error regardless of what replaces it. Replacing a real license with a proprietary marker also blocks with specific relicensing guidance.
 
 **What triggers this:**
-- Changing the license of existing code from one license to another
-- Replacing license headers with different licenses
-- Modifying license terms
+- Replacing a detected license with one that is not in the repository's allowed license list
+- For example, replacing MIT with GPL-2.0-only in a permissively licensed repository
+
+Replacing a detected license with another allowed license does **not** block in
+`opensource` mode (for example, BSD-3-Clause to MIT or MIT to Apache-2.0 in a
+permissively licensed repository). The checker tests whether the new license is
+allowed, not whether the old and new licenses are identical. An uncertain
+replacement detection may produce a non-blocking warning instead; see
+[Uncertain/Unknown License Detection](#uncertainunknown-license-detection).
+
+**A passing check is not legal approval.** The checker evaluates detected license changes against the repository's allowed-license list; it does not determine whether relicensing is legally authorized. Any license change, including changes between allowed licenses, must undergo the necessary legal review and approval.
 
 **Example:**
 ```
 🚨 BLOCKING ERROR:
 📄 File: src/core.cpp
 🚨 License issues detected:
-  - License deleted: MIT and license added: Apache-2.0
+  - License deleted: MIT and license added: GPL-2.0-only
 ```
 
 **How to fix:**
-- Revert to the original license
-- Obtain proper authorization for license changes
-- Document the reason for license change if legitimate
-- Ensure all copyright holders agree to the license change
+- Restore the original license or use a license allowed by the repository's policy
+- Obtain the necessary legal approval for any relicensing, including changes to another allowed license
 
-**Compliance Impact:** CRITICAL - Changing licenses without proper authorization can violate copyright law
+**Compliance Impact:** CRITICAL - Incompatible or unauthorized relicensing can violate copyright law
 
 ---
 
