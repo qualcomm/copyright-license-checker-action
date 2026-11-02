@@ -78,7 +78,7 @@ allowed, not whether the old and new licenses are identical. An uncertain
 replacement detection may produce a non-blocking warning instead; see
 [Uncertain/Unknown License Detection](#uncertainunknown-license-detection).
 
-**A passing check is not legal approval.** The checker evaluates detected license changes against the repository's allowed-license list; it does not determine whether relicensing is legally authorized. Any license change, including changes between allowed licenses, must undergo the necessary legal review and approval.
+**A passing check is not legal guidance.** The checker evaluates detected license changes against the repository's allowed-license list; it does not determine whether the license usage is compatible or appropriate for the project. Any license change, including changes between allowed licenses, should be reviewed by your attorney or be subject to their guidance.
 
 **Example:**
 ```
