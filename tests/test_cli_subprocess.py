@@ -45,11 +45,10 @@ class TestLegacyCliSubprocess(unittest.TestCase):
         self._write_scancode_stub()
 
     def _write_scancode_stub(self) -> None:
-        """Write a deterministic ScanCode replacement used only by this test."""
-        scancode = self.scancode_bin / "scancode"
-        scancode.write_text(
+        """Write a deterministic ScanCode replacement and platform launcher."""
+        stub = self.scancode_bin / "scancode.py"
+        stub.write_text(
             textwrap.dedent("""\
-                #!{python}
                 import json
                 import os
                 import sys
@@ -61,22 +60,34 @@ class TestLegacyCliSubprocess(unittest.TestCase):
 
                 output_file = Path(sys.argv[sys.argv.index("--json-pp") + 1])
                 target = Path(sys.argv[-1])
-                detections = json.loads(os.environ.get("SCANCODE_DETECTIONS", "{{}}"))
+                detections = json.loads(os.environ.get("SCANCODE_DETECTIONS", "{}"))
                 files = target.rglob("*") if target.is_dir() else [target]
                 report_files = []
                 for file_path in files:
                     if not file_path.is_file():
                         continue
                     expression = detections.get(file_path.name)
-                    entry = {{"path": file_path.name, "type": "file", "license_detections": []}}
+                    entry = {"path": file_path.name, "type": "file", "license_detections": []}
                     if expression is not None:
-                        entry["license_detections"] = [{{"license_expression_spdx": expression}}]
+                        entry["license_detections"] = [{"license_expression_spdx": expression}]
                     report_files.append(entry)
-                output_file.write_text(json.dumps({{"files": report_files}}), encoding="utf-8")
-                """).format(python=sys.executable),
+                output_file.write_text(json.dumps({"files": report_files}), encoding="utf-8")
+                """),
             encoding="utf-8",
         )
-        scancode.chmod(scancode.stat().st_mode | stat.S_IXUSR)
+        if os.name == "nt":
+            launcher = self.scancode_bin / "scancode.cmd"
+            launcher.write_text(
+                '@echo off\n"%SCANCODE_STUB_PYTHON%" "%~dp0scancode.py" %*\n', encoding="ascii"
+            )
+            return
+
+        launcher = self.scancode_bin / "scancode"
+        launcher.write_text(
+            '#!/bin/sh\nexec "$SCANCODE_STUB_PYTHON" "$(dirname "$0")/scancode.py" "$@"\n',
+            encoding="ascii",
+        )
+        launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR)
 
     def _run_main(
         self,
@@ -89,6 +100,7 @@ class TestLegacyCliSubprocess(unittest.TestCase):
         environment = os.environ.copy()
         environment["PATH"] = f"{self.scancode_bin}{os.pathsep}{environment.get('PATH', '')}"
         environment["SCANCODE_DETECTIONS"] = json.dumps(detections or {})
+        environment["SCANCODE_STUB_PYTHON"] = sys.executable
         if extra_environment:
             environment.update(extra_environment)
         return subprocess.run(
