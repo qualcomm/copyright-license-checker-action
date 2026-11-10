@@ -25,7 +25,7 @@ def scancode_mock_patcher(detections: dict):
         Path(output_file).write_text(json.dumps({"files": files}), encoding="utf-8")
         return MagicMock(returncode=0)
 
-    return mock_patch("scanner.license_scancode.subprocess.run", side_effect=fake_run)
+    return mock_patch("copyright_license_checker.license_scancode.subprocess.run", side_effect=fake_run)
 
 
 class TempCwdMixin:
