@@ -7,7 +7,7 @@ Module to check for copyright changes in a patch file.
 
 import re
 
-from scanner.patch import Patch
+from .patch import Patch
 
 # Copyright-bearing added/deleted lines, shared by detect_copyright_changes and
 # has_internal_copyright so both extract lines the same way.

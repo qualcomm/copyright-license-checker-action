@@ -6,9 +6,10 @@ Module to represent and process patch files.
 """
 
 import re
+from pathlib import Path
 
-from scanner.file_types import EXCLUDED_EXTENSIONS
-from scanner.ignore_config import IgnoreConfig
+from .file_types import EXCLUDED_EXTENSIONS
+from .ignore_config import IgnoreConfig
 
 
 class Patch:
@@ -16,18 +17,18 @@ class Patch:
     Class to represent a patch file.
     """
 
-    def __init__(self, patchfile: str) -> None:
+    def __init__(self, patchfile: Path, ignore_path: Path | None = None) -> None:
         """
         Initialize the Patch object.
 
         Args:
-            patchfile (str): The path to the patch file.
+            patchfile (Path): The path to the patch file.
+            ignore_path (Path | None): The repository's .licenseignore path.
         """
-        self.patchfile = patchfile
-        self.ignore_config = IgnoreConfig()
+        self.patchfile = Path(patchfile)
+        self.ignore_config = IgnoreConfig(ignore_path)
 
-        with open(self.patchfile, "r", encoding="utf-8") as f:
-            self.patch_content = f.read()
+        self.patch_content = self.patchfile.read_text(encoding="utf-8")
 
         # Split patch into meta (git commit, summary) vs. code content
         file_delimiter_regex = r"^diff .* b\/(?P<file_name>.*)$"

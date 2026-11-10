@@ -15,14 +15,15 @@ class IgnoreConfig:
     Handles loading and matching of .licenseignore patterns.
     """
 
-    def __init__(self, ignore_path: str = ".licenseignore"):
+    def __init__(self, ignore_path: Path | None = None):
         """
         Load patterns from ignore file.
 
         Args:
-            ignore_path (str): Path to the ignore file. Defaults to '.licenseignore'
+            ignore_path (Path | None): Path to the ignore file. Defaults to
+                '.licenseignore' in the current directory for compatibility.
         """
-        path = Path(ignore_path)
+        path = Path(ignore_path) if ignore_path is not None else Path(".licenseignore")
 
         if path.exists():
             lines = path.read_text(encoding="utf-8").splitlines()

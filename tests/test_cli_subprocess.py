@@ -113,6 +113,31 @@ class TestLegacyCliSubprocess(unittest.TestCase):
             check=False,
         )
 
+    def _run_module(
+        self,
+        *arguments: str,
+        cwd: Path,
+        detections: dict[str, str | None] | None = None,
+        extra_environment: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        """Run the namespaced CLI module with its source directory available."""
+        environment = os.environ.copy()
+        environment["PATH"] = f"{self.scancode_bin}{os.pathsep}{environment.get('PATH', '')}"
+        environment["PYTHONPATH"] = (
+            f"{self.source_root / 'src'}{os.pathsep}{environment.get('PYTHONPATH', '')}"
+        )
+        environment["SCANCODE_DETECTIONS"] = json.dumps(detections or {})
+        if extra_environment:
+            environment.update(extra_environment)
+        return subprocess.run(
+            [sys.executable, "-m", "copyright_license_checker", *arguments],
+            cwd=cwd,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
     def _write_patch(self, directory: Path, filename: str = "change.patch") -> Path:
         """Write the standard new-source-file patch and return its path."""
         patch_file = directory / filename
@@ -158,6 +183,40 @@ class TestLegacyCliSubprocess(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0)
         self.assertIn("No license or copyright issues detected", result.stdout)
+
+    def test_module_cli_uses_repo_root_without_changing_patch_resolution(self) -> None:
+        """The namespaced CLI resolves the patch from the caller and config from its root."""
+        caller = self.workspace / "caller"
+        repository = self.workspace / "repository"
+        caller.mkdir()
+        repository.mkdir()
+        self._write_patch(caller, "patches/change.patch")
+        (repository / ".licenseignore").write_text("src/example.py\n", encoding="utf-8")
+
+        result = self._run_module(
+            "patches/change.patch", "--repo-root", str(repository), cwd=caller
+        )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("No license or copyright issues detected", result.stdout)
+
+    def test_module_cli_maps_invalid_paths_and_scancode_failure_to_contract_codes(self) -> None:
+        """The new CLI reserves codes 2 and 3 for usage and operational errors."""
+        caller = self.workspace / "caller"
+        caller.mkdir()
+        self._write_patch(caller)
+
+        missing = self._run_module("missing.patch", cwd=caller)
+        failed_scancode = self._run_module(
+            "change.patch",
+            cwd=caller,
+            extra_environment={"SCANCODE_EXIT_CODE": "9"},
+        )
+
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn("patch file is not readable", missing.stderr)
+        self.assertEqual(failed_scancode.returncode, 3)
+        self.assertIn("checker execution failed", failed_scancode.stderr)
 
     def test_blocking_finding_preserves_report_and_exit_code(self) -> None:
         """An incompatible license renders the established blocking report."""

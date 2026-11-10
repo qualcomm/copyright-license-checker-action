@@ -3,27 +3,30 @@
 
 import argparse
 import csv
-import logging
-import sys
-import os
 import json
+import logging
+import os
 import subprocess
+import sys
 import tempfile
-from scanner import config
-from scanner.copyright_checker import CopyrightChecker, DEFAULT_INTERNAL_ENTITIES
-from scanner.license_scancode import LicenseChecker
-from scanner.licenses import (
+from pathlib import Path
+
+from . import config
+from .copyright_checker import CopyrightChecker, DEFAULT_INTERNAL_ENTITIES
+from .exceptions import CheckerExecutionError
+from .license_scancode import LicenseChecker
+from .licenses import (
     COPYLEFT_LICENSES,
     PERMISSIVE_LICENSES,
     is_copyleft,
     split_license_components,
 )
-from scanner.patch import Patch
+from .patch import Patch
 
 LOG_PREFIX = "< file license/copyright check >"
 
 
-def detect_license_from_file(license_file_path: str) -> str:
+def detect_license_from_file(license_file_path: Path | str) -> str:
     """
     Detect the license from a LICENSE file using scancode.
 
@@ -33,12 +36,13 @@ def detect_license_from_file(license_file_path: str) -> str:
     Returns:
         str: The detected SPDX license identifier, or None if detection fails.
     """
-    if not os.path.exists(license_file_path):
+    license_file_path = Path(license_file_path)
+    if not license_file_path.exists():
         return None
 
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_file = os.path.join(tmpdir, "scancode_results.json")
+            output_file = Path(tmpdir) / "scancode_results.json"
 
             # Run scancode on the LICENSE file
             subprocess.run(
@@ -48,7 +52,7 @@ def detect_license_from_file(license_file_path: str) -> str:
                     "--strip-root",
                     "--quiet",
                     "--json-pp",
-                    output_file,
+                    str(output_file),
                     license_file_path,
                 ],
                 check=True,
@@ -56,8 +60,7 @@ def detect_license_from_file(license_file_path: str) -> str:
             )
 
             # Parse the results
-            with open(output_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            data = json.loads(output_file.read_text(encoding="utf-8"))
 
             # Extract the license from the first file result
             for file_result in data.get("files", []):
@@ -77,7 +80,7 @@ def detect_license_from_file(license_file_path: str) -> str:
         return None
 
 
-def get_license(repo_name: str) -> str:
+def get_license(repo_name: str, repo_root: Path | None = None) -> str:
     """
     Detect the license from the project's LICENSE file.
     Falls back to config file lookup if LICENSE file is not found or detection fails.
@@ -85,6 +88,8 @@ def get_license(repo_name: str) -> str:
 
     Args:
         repo_name (str): The name of the repository.
+        repo_root (Path | None): Root containing the license file. Defaults to
+            the current directory for legacy callers.
 
     Returns:
         str: The license of the repository.
@@ -105,10 +110,11 @@ def get_license(repo_name: str) -> str:
         "License.md",
     ]
 
+    root = repo_root if repo_root is not None else Path.cwd()
     detected_license = None
     for license_file in license_file_candidates:
-        license_path = os.path.join(os.getcwd(), license_file)
-        if os.path.exists(license_path):
+        license_path = root / license_file
+        if license_path.exists():
             print(f"{LOG_PREFIX} Found license file: {license_file}")
             detected_license = detect_license_from_file(license_path)
             if detected_license:
@@ -310,6 +316,40 @@ def parse_args(argv: list) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse arguments for the new namespaced CLI entry point."""
+    parser = argparse.ArgumentParser(description="Copyright and license compliance checker.")
+    parser.add_argument("patch_file", help="Path to the patch file to check.")
+    parser.add_argument(
+        "repo_name",
+        nargs="?",
+        help="Repository name (defaults to the repository-root directory name).",
+    )
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=Path.cwd(),
+        help=(
+            "Checkout containing LICENSE, COPYING, and .licenseignore "
+            "(default: current directory)."
+        ),
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("opensource", "proprietary"),
+        default="opensource",
+        help="Compliance mode (default: opensource).",
+    )
+    parser.add_argument(
+        "--proprietary-entities",
+        default="",
+        type=_validate_proprietary_entities,
+        help="CSV additional internal copyright-holder strings.",
+    )
+    parser.add_argument("--version", action="version", version="copyright-license-checker 0.0.0")
+    return parser.parse_args(argv)
+
+
 def resolve_internal_entities(proprietary_entities: str) -> list:
     """
     Resolve the internal-entity list from a CSV argument.
@@ -328,7 +368,7 @@ def resolve_internal_entities(proprietary_entities: str) -> list:
     return DEFAULT_INTERNAL_ENTITIES + extra
 
 
-def resolve_allowed_licenses(mode: str, repo_name: str) -> tuple:
+def resolve_allowed_licenses(mode: str, repo_name: str, repo_root: Path | None = None) -> tuple:
     """
     Resolve the repository license and allowed-license baseline.
 
@@ -342,7 +382,7 @@ def resolve_allowed_licenses(mode: str, repo_name: str) -> tuple:
     if mode == "proprietary":
         return "proprietary", PERMISSIVE_LICENSES
 
-    repo_license = get_license(repo_name)
+    repo_license = get_license(repo_name, repo_root)
     if repo_license in PERMISSIVE_LICENSES:
         return repo_license, PERMISSIVE_LICENSES
     if is_copyleft(repo_license):
@@ -387,23 +427,22 @@ def _route_issues(
     return flagged_files, warning_files
 
 
-def main() -> None:
-    """
-    The main function of the script.
-    """
+def run_check(
+    patch_path: Path, repo_name: str, repo_root: Path, mode: str, proprietary_entities: str
+) -> int:
+    """Run the checker and return its compliance exit status."""
+    # pylint: disable=too-many-locals
     # Clamp chatty logging from license_identifier
     logging.basicConfig(level=logging.WARNING)
 
-    args = parse_args(sys.argv[1:])
-    patch = Patch(args.patch_file)
-    repo_name = args.repo_name
-    internal_entities = resolve_internal_entities(args.proprietary_entities)
-    repo_license, allowed_licenses = resolve_allowed_licenses(args.mode, repo_name)
+    patch = Patch(patch_path, repo_root / ".licenseignore")
+    internal_entities = resolve_internal_entities(proprietary_entities)
+    repo_license, allowed_licenses = resolve_allowed_licenses(mode, repo_name, repo_root)
 
     license_checker = LicenseChecker(
         patch,
         allowed_licenses,
-        mode=args.mode,
+        mode=mode,
         proprietary_entities=internal_entities,
     )
     copyright_checker = CopyrightChecker(patch)
@@ -417,9 +456,48 @@ def main() -> None:
     beautify_output(flagged_files, warning_files, repo_license, LOG_PREFIX)
     if os.environ.get("GITHUB_ACTIONS") == "true":
         emit_workflow_annotations(flagged_files, warning_files)
+    return 1 if flagged_files else 0
 
-    sys.exit(1 if flagged_files else 0)
+
+def legacy_main() -> None:
+    """Run the root-script compatibility interface with its historical behavior."""
+    args = parse_args(sys.argv[1:])
+    raise SystemExit(
+        run_check(
+            Path(args.patch_file),
+            args.repo_name,
+            Path.cwd(),
+            args.mode,
+            args.proprietary_entities,
+        )
+    )
 
 
-if __name__ == "__main__":
-    main()
+def main(argv: list[str] | None = None) -> int:
+    """Run the new CLI and map invalid input and execution failures to exit codes."""
+    args = parse_cli_args(argv)
+    patch_path = Path(args.patch_file).expanduser()
+    repo_root = args.repo_root.expanduser()
+    if not patch_path.is_file():
+        print(f"error: patch file is not readable: {patch_path}", file=sys.stderr)
+        return 2
+    if not repo_root.is_dir():
+        print(f"error: repository root is not a directory: {repo_root}", file=sys.stderr)
+        return 2
+
+    try:
+        return run_check(
+            patch_path,
+            args.repo_name or repo_root.name,
+            repo_root,
+            args.mode,
+            args.proprietary_entities,
+        )
+    except (
+        CheckerExecutionError,
+        OSError,
+        subprocess.SubprocessError,
+        json.JSONDecodeError,
+    ) as exc:
+        print(f"error: checker execution failed: {exc}", file=sys.stderr)
+        return 3

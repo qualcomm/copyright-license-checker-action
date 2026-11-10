@@ -12,16 +12,17 @@ import warnings
 import os
 from pathlib import Path
 
-from scanner.copyright_checker import DEFAULT_INTERNAL_ENTITIES, has_internal_copyright
-from scanner.file_types import SOURCE_EXTENSIONS
-from scanner.licenses import (
+from .copyright_checker import DEFAULT_INTERNAL_ENTITIES, has_internal_copyright
+from .exceptions import CheckerExecutionError
+from .file_types import SOURCE_EXTENSIONS
+from .licenses import (
     PROPRIETARY_LICENSE,
     is_license_allowed,
     is_permissive,
     is_uncertain_expression,
     split_license_components,
 )
-from scanner.patch import Patch
+from .patch import Patch
 
 warnings.filterwarnings("ignore", message="Libmagic magic database not found")
 
@@ -68,7 +69,7 @@ class LicenseChecker:
     # invocation; revisit extraction if proprietary mode needs to change how
     # content is batched).
     def detect_licenses_batch(self, changes: list) -> dict:  # noqa: C901
-        # pylint: disable=too-many-locals
+        # pylint: disable=too-many-locals,too-many-branches
         """
         Detect licenses for multiple changes in a single scancode run.
         Args:
@@ -111,21 +112,23 @@ class LicenseChecker:
                 return {}
 
             output_file = os.path.join(tmpdir, "scancode_results.json")
-            subprocess.run(
-                [
-                    "scancode",
-                    "--license",
-                    "--strip-root",
-                    "--quiet",
-                    "--json-pp",
-                    output_file,
-                    tmpdir,
-                ],
-                check=True,
-            )
-
-            with open(output_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            try:
+                subprocess.run(
+                    [
+                        "scancode",
+                        "--license",
+                        "--strip-root",
+                        "--quiet",
+                        "--json-pp",
+                        output_file,
+                        tmpdir,
+                    ],
+                    check=True,
+                )
+                with open(output_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+                raise CheckerExecutionError("ScanCode could not inspect the patch") from exc
 
             results = {}
             for file_result in data.get("files", []):
