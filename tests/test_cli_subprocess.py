@@ -9,6 +9,7 @@ packaging work preserves the interface used by Action consumers and scripts.
 
 import json
 import os
+import shlex
 import stat
 import subprocess
 import sys
@@ -84,7 +85,7 @@ class TestLegacyCliSubprocess(unittest.TestCase):
 
         launcher = self.scancode_bin / "scancode"
         launcher.write_text(
-            f'#!/bin/sh\nexec "$SCANCODE_STUB_PYTHON" "{stub}" "$@"\n',
+            f'#!/bin/sh\nexec "$SCANCODE_STUB_PYTHON" {shlex.quote(str(stub))} "$@"\n',
             encoding="ascii",
         )
         launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR)
