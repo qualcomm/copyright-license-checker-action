@@ -84,7 +84,7 @@ class TestLegacyCliSubprocess(unittest.TestCase):
 
         launcher = self.scancode_bin / "scancode"
         launcher.write_text(
-            '#!/bin/sh\nexec "$SCANCODE_STUB_PYTHON" "$(dirname "$0")/scancode.py" "$@"\n',
+            '#!/bin/sh\nexec "$SCANCODE_STUB_PYTHON" "${0%/*}/scancode.py" "$@"\n',
             encoding="ascii",
         )
         launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR)
@@ -169,6 +169,7 @@ class TestLegacyCliSubprocess(unittest.TestCase):
             "org/repo",
             cwd=caller,
             detections={"0_added.txt": "GPL-2.0-only"},
+            extra_environment={"PATH": str(self.scancode_bin)},
         )
 
         self.assertEqual(result.returncode, 1)
