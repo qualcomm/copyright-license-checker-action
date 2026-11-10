@@ -71,7 +71,7 @@ runs:
         PYTHON_PATH: ${{ steps.prepare-private-environment.outputs.python_path }}
       run: |
         trap 'rm -rf -- "$VENV_PATH"' EXIT
-        "$PYTHON_PATH" "$ACTION_PATH/main.py" \
+        PATH="$(dirname "$PYTHON_PATH"):$PATH" "$PYTHON_PATH" "$ACTION_PATH/main.py" \
           "$PATCH_FILE" \
           "$REPO_NAME" \
           --mode "$MODE" \
