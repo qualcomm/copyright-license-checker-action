@@ -1,3 +1,37 @@
 [tool.black]
 line-length = 100
 target-version = ["py312"]
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "copyright-license-checker"
+dynamic = ["version"]
+description = "Check Git patches for copyright and license compliance issues."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "BSD-3-Clause"
+authors = [
+    { name = "Qualcomm Technologies, Inc. and/or its subsidiaries." },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "scancode-toolkit==32.5.0",
+    "lxml==6.1.0",
+    "pathspec==0.12.1",
+    "pluggy==1.6.0",
+]
+
+[project.scripts]
+copyright-license-checker = "copyright_license_checker.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "copyright_license_checker.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]

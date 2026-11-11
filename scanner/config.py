@@ -1,15 +1,4 @@
-# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
-# SPDX-License-Identifier: BSD-3-Clause
+"""Compatibility shim for :mod:`copyright_license_checker.config`."""
 
-"""
-Configuration data for projects and their licenses.
-"""
-
-data = {
-    "projects": [
-        {"PROJECT_NAME": "meta-qcom-robotics", "MARKINGS": "BSD-3-Clause"},
-        {"PROJECT_NAME": "meta-qcom-kernel", "MARKINGS": "GPL-2.0"},
-        {"PROJECT_NAME": "targoy-qti/qli_test_repo", "MARKINGS": "GPL-2.0"},
-        {"PROJECT_NAME": "audioreach-kernel", "MARKINGS": "GPL-2.0-only"},
-    ]
-}
+# pylint: disable=wildcard-import,unused-wildcard-import
+from copyright_license_checker.config import *  # noqa: F401,F403

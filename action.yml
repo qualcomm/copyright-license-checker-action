@@ -56,6 +56,8 @@ runs:
         uv --no-config pip sync --python "$PYTHON_PATH" \
           --strict --require-hashes --only-binary=lxml \
           "$ACTION_PATH/requirements.lock"
+        uv --no-config pip install --python "$PYTHON_PATH" --no-deps \
+          --only-binary=lxml "$ACTION_PATH"
         echo "venv_path=$VENV_PATH" >> "$GITHUB_OUTPUT"
         echo "python_path=$PYTHON_PATH" >> "$GITHUB_OUTPUT"
         trap - ERR
@@ -63,7 +65,6 @@ runs:
 
     - name: Run checker
       env:
-        ACTION_PATH: ${{ github.action_path }}
         PATCH_FILE: ${{ inputs.patch_file }}
         REPO_NAME: ${{ inputs.repo_name }}
         MODE: ${{ inputs.mode }}
@@ -72,9 +73,10 @@ runs:
         PYTHON_PATH: ${{ steps.prepare-private-environment.outputs.python_path }}
       run: |
         trap 'rm -rf -- "$VENV_PATH"' EXIT
-        PATH="$(dirname "$PYTHON_PATH"):$PATH" "$PYTHON_PATH" "$ACTION_PATH/main.py" \
+        PATH="$(dirname "$PYTHON_PATH"):$PATH" copyright-license-checker \
           "$PATCH_FILE" \
           "$REPO_NAME" \
+          --repo-root "$GITHUB_WORKSPACE" \
           --mode "$MODE" \
           --proprietary-entities "$PROPRIETARY_ENTITIES"
       shell: bash
