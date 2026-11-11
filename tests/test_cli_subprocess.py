@@ -127,6 +127,7 @@ class TestLegacyCliSubprocess(unittest.TestCase):
             f"{self.source_root / 'src'}{os.pathsep}{environment.get('PYTHONPATH', '')}"
         )
         environment["SCANCODE_DETECTIONS"] = json.dumps(detections or {})
+        environment["SCANCODE_STUB_PYTHON"] = sys.executable
         if extra_environment:
             environment.update(extra_environment)
         return subprocess.run(
@@ -264,6 +265,40 @@ class TestLegacyCliSubprocess(unittest.TestCase):
         self.assertIn(
             "::error file=src/example.py::Incompatible license added: GPL-2.0-only", result.stdout
         )
+
+    def test_action_style_module_invocation_preserves_report_and_annotation(self) -> None:
+        """The packaged command's Action arguments retain report and annotation behavior."""
+        repository = self.workspace / "repository"
+        repository.mkdir()
+        self._write_patch(repository)
+        arguments = (
+            "change.patch",
+            "org/repo",
+            "--repo-root",
+            str(repository),
+            "--mode",
+            "opensource",
+            "--proprietary-entities",
+            "",
+        )
+
+        direct_result = self._run_module(
+            *arguments,
+            cwd=repository,
+            detections={"0_added.txt": "GPL-2.0-only"},
+        )
+        action_result = self._run_module(
+            *arguments,
+            cwd=repository,
+            detections={"0_added.txt": "GPL-2.0-only"},
+            extra_environment={"GITHUB_ACTIONS": "true"},
+        )
+
+        annotation = "::error file=src/example.py::Incompatible license added: GPL-2.0-only\n"
+        self.assertEqual(direct_result.returncode, 1)
+        self.assertEqual(action_result.returncode, direct_result.returncode)
+        self.assertEqual(action_result.stdout.removesuffix(annotation), direct_result.stdout)
+        self.assertTrue(action_result.stdout.endswith(annotation))
 
     def test_missing_and_unreadable_patch_paths_propagate_legacy_failures(self) -> None:
         """Missing files and directories expose the current operational behavior."""
