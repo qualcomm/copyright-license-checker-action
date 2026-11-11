@@ -2,11 +2,112 @@
 
 ## About
 
-This action is a GitHub Action that checks for copyright and license issues in a repository. It uses the scancode library to detect licenses and the patch library to parse patch files.
+This project provides an installable command-line checker and a GitHub Action
+for finding copyright and license issues in a repository. It uses ScanCode to
+detect licenses and parses Git-format patch files.
 
 📋 **[View Detailed Compliance Documentation](COMPLIANCE.md)** - Learn about all scenarios that can block your build and how to fix them.
 
-## Usage
+## Standalone CLI
+
+The CLI requires Python 3.12 or newer. Installing the project also installs
+ScanCode and its `scancode` command. ScanCode is a large runtime dependency;
+use the wheel-only `lxml` option so installation fails clearly rather than
+trying to build lxml from source without its native headers.
+
+Install from a local checkout with pip:
+
+```sh
+python -m pip install --only-binary=lxml .
+```
+
+Or install the checkout in an isolated `pipx` environment:
+
+```sh
+pipx install --pip-args="--only-binary=lxml" .
+```
+
+Verify the installation:
+
+```sh
+copyright-license-checker --version
+copyright-license-checker --help
+scancode --version
+```
+
+### Generate and check a patch
+
+Generate a Git-format patch from the change you want to inspect. Replace
+`origin/main` with the appropriate base revision for your repository:
+
+```sh
+git diff origin/main...HEAD > pr.patch
+copyright-license-checker pr.patch --repo-root .
+```
+
+The optional `REPO_NAME` positional argument is accepted for compatibility
+with existing scripts and Action users. When it is omitted, the checker uses
+the name of `--repo-root`:
+
+```sh
+copyright-license-checker pr.patch organization/repository --repo-root .
+```
+
+`PATCH_FILE` is resolved from the directory where the command is run, while
+`--repo-root` selects the checkout that supplies `LICENSE`, `COPYING`, and
+`.licenseignore`. For example, this works when the patch is outside the
+checkout:
+
+```sh
+cd /tmp
+copyright-license-checker /path/to/repository/pr.patch --repo-root /path/to/repository
+```
+
+For a proprietary repository, select proprietary mode. Add comma-separated
+copyright-holder strings when your organization needs extra internal entities:
+
+```sh
+copyright-license-checker pr.patch --repo-root . \
+  --mode proprietary \
+  --proprietary-entities "Example Corporation,Example Subsidiary"
+```
+
+### Ignore configuration and exit codes
+
+An optional `.licenseignore` file belongs at the repository root selected by
+`--repo-root`. It uses Git-style wildcard patterns and ignores matching paths:
+
+```text
+# Generated and vendored paths to exclude from checks
+generated/**
+third_party/example.py
+```
+
+The command writes the normal human-readable report and uses these exit codes:
+
+| Code | Meaning |
+| ---: | --- |
+| 0 | No blocking findings; warnings may be present. |
+| 1 | One or more blocking compliance findings. |
+| 2 | Invalid arguments or user-supplied paths/configuration. |
+| 3 | The checker could not run, for example because ScanCode failed. |
+
+### Generic CI example
+
+After checking out both sides of a change in any CI system, install the
+project and run the command from the checkout:
+
+```sh
+python -m pip install --only-binary=lxml .
+git diff "$BASE_REVISION...$CI_COMMIT_SHA" > ci.patch
+copyright-license-checker ci.patch --repo-root "$PWD"
+```
+
+Set `BASE_REVISION` and `CI_COMMIT_SHA` using your CI system's revision
+variables. A nonzero exit code makes the job fail when the checker finds a
+blocking issue.
+
+## GitHub Action usage
 
 To use this action, you need to create a GitHub Action workflow file in your repository (.github/workflows/copyright-license-checker-action.yml). Here's an example of how to use this action
 

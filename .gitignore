@@ -16,3 +16,6 @@ test*.patch
 .coverage
 coverage.xml
 htmlcov/
+dist/
+build/
+*.egg-info/
