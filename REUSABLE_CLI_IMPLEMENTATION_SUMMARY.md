@@ -9,20 +9,29 @@ The branches form a stack. Each branch contains the commits from the branch to
 its left and should be reviewed or merged in this order:
 
 ```text
-refactor/namespaced-cli
+test/reusable-cli-characterization
+  -> refactor/namespaced-cli
   -> feat/installable-cli
   -> refactor/action-use-packaged-cli
   -> docs/standalone-cli-usage
 ```
 
-## Prerequisite: Namespaced CLI
+## Step 1: CLI Characterization
+
+**Branch:** `craigez:test/reusable-cli-characterization`
+
+This initial test branch defined the existing command-line behavior before the
+implementation moved or was packaged. It covers command invocation, working
+directory behavior, invalid paths, ScanCode failures, reports, and GitHub
+Actions annotations.
+
+## Step 2: Namespaced CLI
 
 **Branch:** `refactor/namespaced-cli`
 
-This branch completed the first two plan stages before the packaging work:
+This branch moved the characterized implementation behind its new package and
+CLI boundary:
 
-- Added subprocess-level CLI characterization tests, including working
-  directory, invalid path, ScanCode failure, report, and annotation behavior.
 - Moved the implementation to `src/copyright_license_checker`.
 - Kept the root `main.py` and top-level `scanner` package as compatibility
   wrappers for existing Action users and import paths.
