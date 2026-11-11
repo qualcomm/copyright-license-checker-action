@@ -1,7 +1,7 @@
 [run]
 source =
-    main
     scanner
+    src/copyright_license_checker
 omit =
     tests/*
     .tox/*

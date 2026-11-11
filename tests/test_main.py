@@ -8,6 +8,8 @@ Covers repository license resolution, command-line parsing, report rendering,
 and the main entry point wiring.
 """
 
+# main.py replaces itself with the namespaced implementation at import time.
+# pylint: disable=no-member
 import contextlib
 import io
 import os
@@ -322,7 +324,7 @@ class TestMainEntryPoint(LicenseFileTestCase):
         ):
             with contextlib.redirect_stdout(buffer):
                 with self.assertRaises(SystemExit) as caught:
-                    main.main()
+                    main.legacy_main()
         return buffer.getvalue(), caught.exception.code
 
     def test_blocking_issues_emit_error_annotations(self):
@@ -455,7 +457,7 @@ class TestMainEntryPoint(LicenseFileTestCase):
             with mock_patch.object(sys, "argv", ["main.py", "pr.patch", "org/repo"]):
                 with contextlib.redirect_stdout(io.StringIO()):
                     with self.assertRaises(SystemExit):
-                        main.main()
+                        main.legacy_main()
             self.assertEqual(license_cls.call_args[0][1], main.PERMISSIVE_LICENSES)
             self.assertEqual(license_cls.call_args.kwargs["mode"], "opensource")
             self.assertEqual(
@@ -476,7 +478,7 @@ class TestMainEntryPoint(LicenseFileTestCase):
             with mock_patch.object(sys, "argv", ["main.py", "pr.patch", "org/repo"]):
                 with contextlib.redirect_stdout(io.StringIO()):
                     with self.assertRaises(SystemExit):
-                        main.main()
+                        main.legacy_main()
             self.assertEqual(license_cls.call_args[0][1], main.COPYLEFT_LICENSES)
 
     def test_compound_expression_is_parsed_into_components(self):
@@ -492,7 +494,7 @@ class TestMainEntryPoint(LicenseFileTestCase):
             with mock_patch.object(sys, "argv", ["main.py", "pr.patch", "org/repo"]):
                 with contextlib.redirect_stdout(io.StringIO()):
                     with self.assertRaises(SystemExit):
-                        main.main()
+                        main.legacy_main()
             self.assertEqual(license_cls.call_args[0][1], ["GPL-2.0-only", "MIT"])
 
     def test_proprietary_mode_uses_permissive_baseline_without_license_lookup(self):
@@ -517,7 +519,7 @@ class TestMainEntryPoint(LicenseFileTestCase):
             with mock_patch.object(sys, "argv", argv):
                 with contextlib.redirect_stdout(io.StringIO()):
                     with self.assertRaises(SystemExit):
-                        main.main()
+                        main.legacy_main()
             get_license.assert_not_called()
             self.assertEqual(license_cls.call_args[0][1], main.PERMISSIVE_LICENSES)
             self.assertEqual(license_cls.call_args.kwargs["mode"], "proprietary")
