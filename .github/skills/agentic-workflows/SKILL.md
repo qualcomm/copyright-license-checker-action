@@ -46,7 +46,15 @@ scope.
   existing logs. Scope `gh aw audit` or `gh aw logs` to the supplied run or
   repository only.
 
-If more guidance is necessary, read only the matching upstream file from the
-selected `github/gh-aw` release: `create-agentic-workflow.md`,
-`update-agentic-workflow.md`, `debug-agentic-workflow.md`,
-`upgrade-agentic-workflows.md`, `network.md`, or `safe-outputs.md`.
+If more guidance is necessary, use only the relevant authoritative resource in
+the [github/gh-aw repository](https://github.com/github/gh-aw):
+
+- <https://raw.githubusercontent.com/github/gh-aw/main/.github/aw/create-agentic-workflow.md>
+- <https://raw.githubusercontent.com/github/gh-aw/main/.github/aw/update-agentic-workflow.md>
+- <https://raw.githubusercontent.com/github/gh-aw/main/.github/aw/debug-agentic-workflow.md>
+- <https://raw.githubusercontent.com/github/gh-aw/main/.github/aw/upgrade-agentic-workflows.md>
+- <https://raw.githubusercontent.com/github/gh-aw/main/.github/aw/network.md>
+- <https://raw.githubusercontent.com/github/gh-aw/main/.github/aw/safe-outputs.md>
+
+Replace `main` with the matching upstream release tag or commit when the task
+requires a specific gh-aw version.

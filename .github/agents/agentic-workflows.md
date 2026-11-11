@@ -59,13 +59,16 @@ HOST/OWNER/REPO` only for the supplied scope. Do not dispatch or rerun a
 workflow without explicit user authorization.
 
 For a problem that cannot be resolved from local evidence, read only the
-relevant upstream gh-aw guidance:
+relevant authoritative guidance in the
+[github/gh-aw repository](https://github.com/github/gh-aw):
 
-- Create: `.github/aw/create-agentic-workflow.md`
-- Update: `.github/aw/update-agentic-workflow.md`
-- Debug: `.github/aw/debug-agentic-workflow.md`
-- Upgrade: `.github/aw/upgrade-agentic-workflows.md`
-- Security controls: `.github/aw/network.md` and `.github/aw/safe-outputs.md`
+- Create: <https://raw.githubusercontent.com/github/gh-aw/main/.github/aw/create-agentic-workflow.md>
+- Update: <https://raw.githubusercontent.com/github/gh-aw/main/.github/aw/update-agentic-workflow.md>
+- Debug: <https://raw.githubusercontent.com/github/gh-aw/main/.github/aw/debug-agentic-workflow.md>
+- Upgrade: <https://raw.githubusercontent.com/github/gh-aw/main/.github/aw/upgrade-agentic-workflows.md>
+- Security controls: <https://raw.githubusercontent.com/github/gh-aw/main/.github/aw/network.md>
+  and <https://raw.githubusercontent.com/github/gh-aw/main/.github/aw/safe-outputs.md>
 
-Load these from the matching `github/gh-aw` release or its public raw URL. Do
-not load the broad upstream router or unrelated topic guides by default.
+Replace `main` with the matching upstream release tag or commit when the task
+requires a specific gh-aw version. Do not load the broad upstream router or
+unrelated topic guides by default.
