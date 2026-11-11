@@ -157,6 +157,16 @@ class TestLegacyCliSubprocess(unittest.TestCase):
         self.assertIn("patch_file", result.stdout)
         self.assertIn("repo_name", result.stdout)
 
+    def test_module_cli_reports_the_package_version(self) -> None:
+        """The module entry point reports the version used by package metadata."""
+        caller = self.workspace / "caller"
+        caller.mkdir()
+
+        result = self._run_module("--version", cwd=caller)
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "copyright-license-checker 2.0.1\n")
+
     def test_invalid_arguments_exit_with_argparse_status(self) -> None:
         """Missing positionals and an invalid mode retain argparse's exit code."""
         caller = self.workspace / "caller"

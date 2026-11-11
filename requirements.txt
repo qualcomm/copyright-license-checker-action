@@ -1,5 +1,8 @@
-# Direct runtime requirements. Regenerate requirements.lock with the command
-# recorded in its header after changing this file.
+# Runtime dependencies are declared authoritatively in pyproject.toml. This
+# file is a line-for-line mirror for the existing Action and ScanCode container
+# checks; tests/test_packaging_metadata.py verifies that it remains in sync.
+# Regenerate requirements.lock with the command recorded in its header after
+# changing this file.
 scancode-toolkit==32.5.0
 # ScanCode permits newer lxml releases, but some newer releases may resolve to
 # an sdist on the action runner. Keep installation wheel-only and use a release
@@ -8,5 +11,5 @@ lxml==6.1.0
 pathspec==0.12.1
 # pluggy is an unpinned transitive dependency via plugincode. pluggy 1.7.0
 # rejects plugincode's hookspec modules ("did not find any 'pre_scan' hooks"),
-# so scancode-toolkit 32.5.0 fails at startup. Keep it below 1.7.
-pluggy<1.7
+# so scancode-toolkit 32.5.0 fails at startup. Pin a compatible release.
+pluggy==1.6.0
