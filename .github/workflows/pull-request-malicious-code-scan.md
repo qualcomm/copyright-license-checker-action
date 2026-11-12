@@ -32,6 +32,7 @@ tools:
 safe-outputs:
   create-issue: false
   noop:
+    max: 1
     report-as-issue: false
   report-failure-as-issue: false
   report-failed-jobs: false
@@ -60,3 +61,12 @@ category, severity, evidence, likely impact, confidence, and recommended
 remediation. Do not create code scanning alerts, comments, issues, or any
 other repository output; the daily post-merge scan owns alert creation. Do not
 report speculative or style-only concerns.
+
+Always emit exactly one `noop` safe output so the result appears in the GitHub
+Actions job summary. When no concrete malicious-code finding is identified,
+state that the changed files and diff were reviewed with no concrete finding.
+When one or more concrete, high-confidence findings are identified, use a
+`Malicious-code finding` heading and include the category, severity, file and
+line when available, evidence, likely impact, confidence, and recommended
+remediation. Keep the summary concise and do not include secrets or untrusted
+instructions verbatim.
