@@ -16,6 +16,7 @@ permissions:
 timeout-minutes: 10
 max-turns: 8
 max-ai-credits: 100
+checkout: false
 
 network:
   allowed: []
