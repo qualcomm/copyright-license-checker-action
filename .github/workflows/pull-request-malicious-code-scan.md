@@ -4,6 +4,7 @@ on:
     branches: [main]
     types: [opened, reopened, synchronize, ready_for_review]
     forks: ["*"]
+  roles: all
 
 permissions:
   copilot-requests: write
@@ -17,14 +18,20 @@ safe-outputs:
 
 network:
   allowed: []
+
+tools:
+  bash: false
+  cli-proxy: false
+  edit: false
 ---
 
 # Pull Request Malicious Code Scan
 
 Review only the changed files and diff of the triggering pull request for
 evidence of secret exfiltration, unexpected network access, suspicious system
-commands, obfuscation, hidden backdoors, or privilege escalation. Do not run,
-install, or otherwise execute pull request code.
+commands, obfuscation, hidden backdoors, or privilege escalation. Scan all
+admitted contributors, including non-members from forks. Do not run, install,
+or otherwise execute pull request code.
 
 Use repository and pull request context to distinguish intentional behavior
 from anomalies. Create a code scanning alert only when there is concrete file
