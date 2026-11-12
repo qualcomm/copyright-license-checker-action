@@ -21,6 +21,10 @@ network:
   allowed: []
 
 tools:
+  github:
+    min-integrity: none
+    allowed-repos: "${{ github.repository }}"
+    toolsets: [context, repos, pull_requests]
   bash: false
   cli-proxy: false
   edit: false
