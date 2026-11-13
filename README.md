@@ -115,19 +115,55 @@ The action supports an optional `.licenseignore` file to exclude files or paths 
 Agentic Workflows use a reviewable Markdown source file and a generated GitHub
 Actions lock file. For example,
 `.github/workflows/daily-malicious-code-scan.md` is the source for
-`.github/workflows/daily-malicious-code-scan.lock.yml`. GitHub Actions runs the
-lock file; do not edit it by hand.
+`.github/workflows/daily-malicious-code-scan.lock.yml`, and
+`.github/workflows/pull-request-malicious-code-scan.md` is the source for its
+matching lock file. GitHub Actions runs the lock files; do not edit them by
+hand.
+
+The daily scan reviews changes from the preceding three days and publishes
+concrete post-merge findings as code-scanning alerts. The pull-request scan is
+a separate, pre-merge gate that reviews the PR diff through read-only GitHub
+tools. It never checks out, installs, or executes pull-request code, and it
+does not create alerts, comments, or issues. Arbitrary agent network egress is
+denied; controlled GitHub MCP and Copilot inference transport are still needed
+to perform the review.
+
+For the pull-request scan:
+
+- A complete review with no concrete finding succeeds and writes a bounded job
+  summary.
+- A concrete finding writes a concise summary and fails the `fail_on_finding`
+  job.
+- Missing, truncated, or partially reviewed PR data produces an incomplete,
+  failed scan. A detection failure or absent detector verdict also fails the
+  scan.
+
+The scan is triggered alongside existing CI; it does not prevent other
+`pull_request` workflows from starting. To use it as a merge gate, configure
+branch protection or a ruleset after merge. Prefer an organization-required
+workflow that is controlled outside the PR. Where only required status checks
+are available, require all generated scanner jobs: `activation`, `agent`,
+`detection`, `fail_on_finding`, `safe_outputs`, and `conclusion`. Recheck these
+names after every gh-aw upgrade. A successful agent assessment is evidence from
+an automated review, not a guarantee that a change is safe.
+
+Before relying on the gate for untrusted forks, verify a real non-collaborator
+fork run can authenticate for Copilot inference and retrieve the complete diff.
+Do not broaden token permissions or expose repository secrets to make this work.
 
 After changing an Agentic Workflow source file, regenerate and validate its
 lock file:
 
 ```sh
-gh aw compile daily-malicious-code-scan
-gh aw compile --validate
+gh aw compile daily-malicious-code-scan pull-request-malicious-code-scan --validate
+gh aw compile pull-request-malicious-code-scan --no-emit --validate
 ```
 
 Commit both files. If compilation reports new actions or restricted secrets,
 review the generated change before rerunning the compiler with `--approve`.
+Use `--no-emit` for non-mutating validation. `--dry-run` deliberately changes
+the emitted lock for dry-run behavior, so run it only in an isolated checkout or
+regenerate the normal deployment lock before committing.
 
 ## Documentation
 
