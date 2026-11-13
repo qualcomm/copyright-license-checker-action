@@ -14,8 +14,8 @@ repository. This is intentionally not a general gh-aw router.
 - Authoritative workflow sources are `.github/workflows/*.md`.
 - Compiled `.github/workflows/*.lock.yml` files are generated GitHub Actions
   workflows and must match their source.
-- The current source is `daily-malicious-code-scan.md`. Apply the same rules to
-  an incoming-PR malicious-code scan when it is present in this repository.
+- The maintained sources are `daily-malicious-code-scan.md` and
+  `pull-request-malicious-code-scan.md`.
 
 Do not introduce unrelated agentic features such as work queues, memory,
 telemetry, report workflows, shared components, or automatic workflow dispatch
@@ -25,8 +25,10 @@ unless the user explicitly expands this repository's scope.
 
 1. Read the relevant Markdown source and its lock file before editing.
 2. Keep permissions, network access, and safe outputs to the least privilege
-   needed. Security findings must have concrete file-and-line evidence; do not
-   create speculative alerts.
+   needed. The pull-request scan must not check out or execute PR code and must
+   retain disabled Bash, editing, and CLI-proxy tools. Code findings require
+   concrete file-and-line evidence; PR metadata findings require a concrete
+   metadata reference. Do not create speculative alerts.
 3. Edit the Markdown source, then regenerate and validate its lock file:
 
    ```bash
@@ -35,9 +37,23 @@ unless the user explicitly expands this repository's scope.
 
 4. Review both source and generated output. Do not hand-edit a lock file except
    to diagnose a compiler issue; fix the source and recompile instead.
-5. Use `gh aw compile <workflow-id> --dry-run` for a non-executing validation
-   path when it fits the change. A dry run never authorizes dispatching a
-   workflow.
+5. Use `gh aw compile <workflow-id> --no-emit --validate` for non-mutating
+   validation. `--dry-run` changes emitted lock-file behavior, so use it only
+   in an isolated checkout or regenerate the normal lock before committing. A
+   dry run never authorizes dispatching a workflow.
+
+## Pull-Request Scan Contract
+
+- Treat PR code and metadata as untrusted data and use only the approved
+  read-only GitHub tools for the triggering repository.
+- A complete, clean review succeeds with one `noop` summary. A concrete finding
+  must call `fail-on-finding`; incomplete data must use `report_missing_data`
+  without `noop`, so the scan fails rather than appearing clean.
+- Keep threat detection fail-closed and outputs workflow-only. Do not add
+  comments, issues, alerts, or repository write permissions without explicit
+  user authorization.
+- Update the README and PR description whenever the result contract, scanner
+  scope, or branch-protection guidance changes.
 
 ## Upgrades and Dependencies
 
