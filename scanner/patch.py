@@ -10,6 +10,53 @@ import re
 from scanner.file_types import EXCLUDED_EXTENSIONS
 from scanner.ignore_config import IgnoreConfig
 
+# git diff wraps a path in double quotes and C-escapes it when the path has a
+# '"', a backslash, a control character or, with the default core.quotePath,
+# any byte outside printable ASCII: diff --git "a/\303\251.c" "b/\303\251.c"
+_GIT_PATH_ESCAPES = {
+    "a": 0x07,
+    "b": 0x08,
+    "t": 0x09,
+    "n": 0x0A,
+    "v": 0x0B,
+    "f": 0x0C,
+    "r": 0x0D,
+    '"': 0x22,
+    "\\": 0x5C,
+}
+
+
+def unquote_git_path(path: str) -> str:
+    """
+    Undo git's C-style quoting of a path, as printed in diff headers.
+
+    Args:
+        path (str): The path as printed by git, quoted or not.
+
+    Returns:
+        str: The path with quoting removed and octal escapes decoded as UTF-8.
+    """
+    if len(path) < 2 or not (path.startswith('"') and path.endswith('"')):
+        return path
+    raw = bytearray()
+    i, end = 1, len(path) - 1
+    while i < end:
+        char = path[i]
+        if char == "\\" and i + 1 < end:
+            escaped = path[i + 1]
+            if escaped in "01234567":
+                start, stop = i + 1, i + 4
+                raw.append(int(path[start:stop], 8))
+                i += 4
+                continue
+            if escaped in _GIT_PATH_ESCAPES:
+                raw.append(_GIT_PATH_ESCAPES[escaped])
+                i += 2
+                continue
+        raw += char.encode("utf-8")
+        i += 1
+    return raw.decode("utf-8", errors="replace")
+
 
 class Patch:
     """
@@ -30,7 +77,7 @@ class Patch:
             self.patch_content = f.read()
 
         # Split patch into meta (git commit, summary) vs. code content
-        file_delimiter_regex = r"^diff .* b\/(?P<file_name>.*)$"
+        file_delimiter_regex = r'^diff .* (?P<file_name>"b/(?:[^"\\\n]|\\.)*"|b/.*[^"\n])$'
         r = re.split(file_delimiter_regex, self.patch_content, flags=re.MULTILINE)
         patch_content = r[1:]
         files_changes = list(zip(patch_content[::2], patch_content[1::2]))
@@ -38,6 +85,9 @@ class Patch:
         # Create the list of changes in each file
         self.changes = []
         for path_name, file_change in files_changes:
+            path_name = unquote_git_path(path_name)
+            path_name = path_name.removeprefix("b/")
+
             # figure change type
             change_type = re.search(r"(\w*) file mode", file_change, re.MULTILINE)
             if change_type and change_type.group(1) == "new":
