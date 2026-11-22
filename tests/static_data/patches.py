@@ -144,6 +144,27 @@ index 1234567..89abcde 100644
 +new
 """
 
+# git quotes paths with non-ASCII bytes (default core.quotePath), '"', '\' or
+# control characters. This is what plain `git diff` prints for src/café.c.
+QUOTED_PATH_ADDED_SOURCE_FILE = r"""diff --git "a/src/caf\303\251.c" "b/src/caf\303\251.c"
+new file mode 100644
+index 0000000..1234567
+--- /dev/null
++++ "b/src/caf\303\251.c"
+@@ -0,0 +1 @@
++int cafe(void) { return 0; }
+"""
+
+# A quoted Markdown path: still excluded once the name is decoded.
+QUOTED_PATH_MARKDOWN = r"""diff --git "a/r\303\251sum\303\251.md" "b/r\303\251sum\303\251.md"
+new file mode 100644
+index 0000000..1234567
+--- /dev/null
++++ "b/r\303\251sum\303\251.md"
+@@ -0,0 +1 @@
++# Notes
+"""
+
 # --- Regression-harness fixtures (see tests/test_regression_snapshot.py) ---
 # One file per patch so each maps to scancode detection keys "0_added.txt" /
 # "0_deleted.txt" -- the batch scanner indexes by position within the

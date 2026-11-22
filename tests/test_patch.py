@@ -13,7 +13,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scanner.patch import Patch
+from scanner.copyright_checker import CopyrightChecker
+from scanner.patch import Patch, unquote_git_path
 from tests.static_data import patches
 
 
@@ -156,6 +157,45 @@ class TestPatchContent(PatchTestCase):
         """An empty patch file parses to an empty change list."""
         patch = self.parse("")
         self.assertEqual(patch.changes, [])
+
+
+class TestPatchQuotedPaths(PatchTestCase):
+    """Paths that git prints in C-style quotes."""
+
+    def test_quoted_path_is_parsed_and_decoded(self):
+        """A quoted diff header yields its own change with the decoded path."""
+        patch = self.parse(patches.QUOTED_PATH_ADDED_SOURCE_FILE)
+        self.assertEqual(len(patch.changes), 1)
+        self.assertEqual(patch.changes[0]["path_name"], "src/caf\u00e9.c")
+        self.assertEqual(patch.changes[0]["change_type"], "ADDED")
+        self.assertIn("+int cafe(void)", patch.changes[0]["content"])
+
+    def test_quoted_path_does_not_merge_into_previous_file(self):
+        """
+        The previous file keeps its own change type, so its copyright
+        deletion is still reported.
+        """
+        combined = patches.MODIFIED_WITH_DELETED_COPYRIGHT + patches.QUOTED_PATH_ADDED_SOURCE_FILE
+        patch = self.parse(combined)
+        self.assertEqual(
+            [(change["path_name"], change["change_type"]) for change in patch.changes],
+            [("src/bar.c", "MODIFIED"), ("src/caf\u00e9.c", "ADDED")],
+        )
+        self.assertIn("src/bar.c", CopyrightChecker(patch).run())
+
+    def test_quoted_path_exclusions_use_decoded_name(self):
+        """Extension and .licenseignore exclusions match the decoded path."""
+        patch = self.parse(patches.QUOTED_PATH_MARKDOWN)
+        self.assertEqual(patch.changes, [])
+        Path(self.tmp.name, ".licenseignore").write_text("src/caf\u00e9.c\n", encoding="utf-8")
+        patch = self.parse(patches.QUOTED_PATH_ADDED_SOURCE_FILE)
+        self.assertEqual(patch.changes, [])
+
+    def test_unquote_git_path(self):
+        """Octal bytes decode as UTF-8 and C escapes map to their characters."""
+        self.assertEqual(unquote_git_path('"b/caf\\303\\251.c"'), "b/caf\u00e9.c")
+        self.assertEqual(unquote_git_path('"b/a\\"b\\\\c\\td.c"'), 'b/a"b\\c\td.c')
+        self.assertEqual(unquote_git_path("b/plain.c"), "b/plain.c")
 
 
 if __name__ == "__main__":
