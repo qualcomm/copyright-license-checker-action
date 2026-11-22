@@ -175,9 +175,9 @@ published for Linux x86_64, so build this validation image for that platform:
 
 ```sh
 DOCKER_BUILDKIT=1 docker build --platform linux/amd64 \
-  --tag copyright-license-checker-scancode-test \
+  --tag localhost/copyright-license-checker-scancode-test:local \
   --file Dockerfile.scancode-test .
-docker run --rm --platform linux/amd64 copyright-license-checker-scancode-test
+docker run --rm --platform linux/amd64 localhost/copyright-license-checker-scancode-test:local
 ```
 
 The build intentionally uses `--only-binary=lxml`, matching the action's
@@ -195,7 +195,7 @@ the image:
 ```sh
 DOCKER_BUILDKIT=1 docker build --platform linux/amd64 \
   --secret id=corp_ca,src=/path/to/combined-ca-bundle.pem \
-  --tag copyright-license-checker-scancode-test \
+  --tag localhost/copyright-license-checker-scancode-test:local \
   --file Dockerfile.scancode-test .
 ```
 
