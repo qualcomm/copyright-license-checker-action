@@ -30,17 +30,60 @@ class TestDetectLicenses(TempCwdMixin, unittest.TestCase):
             self.assertEqual(detect_licenses([]), {})
         run.assert_not_called()
 
-    def test_no_staging_directory_raises_naming_the_location_and_reason(self):
-        """If no staging directory can be created at all, the scan stops with a clear reason."""
+    def test_results_are_keyed_by_original_path(self):
+        """scancode's results map back to the repository-relative paths."""
+        Path("src").mkdir()
+        Path("src/a.c").write_text("x\n", encoding="utf-8")
+        with scancode_mock_patcher({"src/a.c": "MIT"}) as run:
+            results = detect_licenses(["src/a.c"])
+        self.assertEqual(results["src/a.c"]["detected_license_expression_spdx"], "MIT")
+        self.assertEqual(run.call_count, 1)
+        # --strip-root has scancode report each path relative to the directory it was given.
+        self.assertIn("--strip-root", run.call_args.args[0])
+
+    def test_files_are_hardlinked_not_copied(self):
+        """A staged file is a hardlink to the original, not a byte-for-byte copy."""
         Path("a.c").write_text("x\n", encoding="utf-8")
-        with (
-            mock_patch(SUBPROCESS_RUN) as run,
-            mock_patch("tempfile.mkdtemp", side_effect=OSError("Permission denied")),
-        ):
-            with self.assertRaises(RuntimeError) as caught:
-                detect_licenses(["a.c"])
-        run.assert_not_called()
-        self.assertIn("Permission denied", str(caught.exception))
+        same_file = []
+
+        def fake_run(cmd, **_kwargs):
+            # The staging directory still exists at this point; it is cleaned up only
+            # after detect_licenses() returns, so check the hardlink here, not after.
+            staged = Path(cmd[-1]) / "a.c"
+            same_file.append(staged.samefile("a.c"))
+            Path(cmd[cmd.index("--json-pp") + 1]).write_text('{"files": []}', encoding="utf-8")
+            return MagicMock(returncode=0)
+
+        with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
+            detect_licenses(["a.c"])
+        self.assertEqual(same_file, [True])
+
+    def test_staging_happens_inside_the_checkout(self):
+        """The staging directory is created inside the checkout, not next to it."""
+        Path("a.c").write_text("x\n", encoding="utf-8")
+        checkout_root = Path.cwd()
+
+        def fake_run(cmd, **_kwargs):
+            input_dir = Path(cmd[-1]).resolve()
+            self.assertEqual(input_dir.parts[: len(checkout_root.parts)], checkout_root.parts)
+            Path(cmd[cmd.index("--json-pp") + 1]).write_text('{"files": []}', encoding="utf-8")
+            return MagicMock(returncode=0)
+
+        with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
+            detect_licenses(["a.c"])
+
+    def test_staging_is_cleaned_up_on_success(self):
+        """The staging directory is removed once the scan completes normally."""
+        Path("a.c").write_text("x\n", encoding="utf-8")
+        checkout_root = Path.cwd()
+
+        def fake_run(cmd, **_kwargs):
+            Path(cmd[cmd.index("--json-pp") + 1]).write_text('{"files": []}', encoding="utf-8")
+            return MagicMock(returncode=0)
+
+        with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
+            detect_licenses(["a.c"])
+        self.assertEqual(list(checkout_root.iterdir()), [checkout_root / "a.c"])
 
     def test_hardlink_failure_raises_naming_the_path_and_reason(self):
         """If a file cannot be hardlinked, the scan stops instead of copying it."""
@@ -78,70 +121,17 @@ class TestDetectLicenses(TempCwdMixin, unittest.TestCase):
         self.assertEqual(len(created), 1)
         self.assertFalse(Path(created[0]).exists())
 
-    def test_staging_happens_inside_the_checkout(self):
-        """The staging directory is created inside the checkout, not next to it."""
+    def test_no_staging_directory_raises_naming_the_location_and_reason(self):
+        """If no staging directory can be created at all, the scan stops with a clear reason."""
         Path("a.c").write_text("x\n", encoding="utf-8")
-        checkout_root = Path.cwd()
-
-        def fake_run(cmd, **_kwargs):
-            input_dir = Path(cmd[-1]).resolve()
-            self.assertEqual(input_dir.parts[: len(checkout_root.parts)], checkout_root.parts)
-            Path(cmd[cmd.index("--json-pp") + 1]).write_text('{"files": []}', encoding="utf-8")
-            return MagicMock(returncode=0)
-
-        with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
-            detect_licenses(["a.c"])
-
-    def test_staging_is_cleaned_up_on_success(self):
-        """The staging directory is removed once the scan completes normally."""
-        Path("a.c").write_text("x\n", encoding="utf-8")
-        checkout_root = Path.cwd()
-
-        def fake_run(cmd, **_kwargs):
-            Path(cmd[cmd.index("--json-pp") + 1]).write_text('{"files": []}', encoding="utf-8")
-            return MagicMock(returncode=0)
-
-        with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
-            detect_licenses(["a.c"])
-        self.assertEqual(list(checkout_root.iterdir()), [checkout_root / "a.c"])
-
-    def test_missing_report_raises_with_scancode_output(self):
-        """If scancode writes no report, the error carries its exit code and stderr."""
-        Path("a.c").write_text("x\n", encoding="utf-8")
-        failed = MagicMock(returncode=2, stderr="Error: bad option")
-        with mock_patch(SUBPROCESS_RUN, return_value=failed):
+        with (
+            mock_patch(SUBPROCESS_RUN) as run,
+            mock_patch("tempfile.mkdtemp", side_effect=OSError("Permission denied")),
+        ):
             with self.assertRaises(RuntimeError) as caught:
                 detect_licenses(["a.c"])
-        self.assertIn("exit code 2", str(caught.exception))
-        self.assertIn("Error: bad option", str(caught.exception))
-
-    def test_files_are_hardlinked_not_copied(self):
-        """A staged file is a hardlink to the original, not a byte-for-byte copy."""
-        Path("a.c").write_text("x\n", encoding="utf-8")
-        same_file = []
-
-        def fake_run(cmd, **_kwargs):
-            # The staging directory still exists at this point; it is cleaned up only
-            # after detect_licenses() returns, so check the hardlink here, not after.
-            staged = Path(cmd[-1]) / "a.c"
-            same_file.append(staged.samefile("a.c"))
-            Path(cmd[cmd.index("--json-pp") + 1]).write_text('{"files": []}', encoding="utf-8")
-            return MagicMock(returncode=0)
-
-        with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
-            detect_licenses(["a.c"])
-        self.assertEqual(same_file, [True])
-
-    def test_results_are_keyed_by_original_path(self):
-        """scancode's results map back to the repository-relative paths."""
-        Path("src").mkdir()
-        Path("src/a.c").write_text("x\n", encoding="utf-8")
-        with scancode_mock_patcher({"src/a.c": "MIT"}) as run:
-            results = detect_licenses(["src/a.c"])
-        self.assertEqual(results["src/a.c"]["detected_license_expression_spdx"], "MIT")
-        self.assertEqual(run.call_count, 1)
-        # --strip-root has scancode report each path relative to the directory it was given.
-        self.assertIn("--strip-root", run.call_args.args[0])
+        run.assert_not_called()
+        self.assertIn("Permission denied", str(caught.exception))
 
     def test_scancode_is_given_exactly_the_listed_files(self):
         """Each listed file reaches scancode at its own path, so same-named files stay apart."""
@@ -159,6 +149,121 @@ class TestDetectLicenses(TempCwdMixin, unittest.TestCase):
         with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
             detect_licenses(["a/main.c", "b/main.c"])
         self.assertEqual(sorted(handed_over), ["a/main.c", "b/main.c"])
+
+    def test_missing_report_raises_with_scancode_output(self):
+        """If scancode writes no report, the error carries its exit code and stderr."""
+        Path("a.c").write_text("x\n", encoding="utf-8")
+        failed = MagicMock(returncode=2, stderr="Error: bad option")
+        with mock_patch(SUBPROCESS_RUN, return_value=failed):
+            with self.assertRaises(RuntimeError) as caught:
+                detect_licenses(["a.c"])
+        self.assertIn("exit code 2", str(caught.exception))
+        self.assertIn("Error: bad option", str(caught.exception))
+
+    def test_unattributed_run_level_error_raises_even_with_a_valid_report(self):
+        """A worker that never finished is recorded against the run, not a file; still fails."""
+        for path in ("a.c", "b.c"):
+            Path(path).write_text("x\n", encoding="utf-8")
+
+        def fake_run(cmd, **_kwargs):
+            # b.c's worker never responds, so scancode records that against
+            # the run rather than against a file: b.c is simply missing from
+            # "files" below, as if it had never been given to scancode at all.
+            # a.c scans cleanly in the same run, to show that one file's loss
+            # is reason enough to fail, whatever else succeeded alongside it.
+            report = {
+                "headers": [{"errors": ["Timeout waiting for resource. Path unknown."]}],
+                "files": [
+                    {
+                        "path": "a.c",
+                        "type": "file",
+                        "detected_license_expression_spdx": "MIT",
+                    }
+                ],
+            }
+            Path(cmd[cmd.index("--json-pp") + 1]).write_text(json.dumps(report), encoding="utf-8")
+            return MagicMock(returncode=1)
+
+        with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
+            with self.assertRaises(RuntimeError) as caught:
+                detect_licenses(["a.c", "b.c"])
+        self.assertIn("Timeout waiting for resource", str(caught.exception))
+
+    def test_attributed_file_error_does_not_abort_the_run(self):
+        """A file that fails on its own does not stop the rest of the run from being reported."""
+        for path in ("a.c", "b.c"):
+            Path(path).write_text("x\n", encoding="utf-8")
+
+        def fake_run(cmd, **_kwargs):
+            # a.c times out on its own: scancode records this both on a.c's
+            # own scan_errors (what _classify() reads) and as a
+            # "Path: input/a.c" pointer in headers[0]["errors"] (scancode's
+            # own cli.py adds this pointer for every file that already has
+            # scan_errors, even without --verbose). b.c scans cleanly
+            # alongside it.
+            report = {
+                "headers": [{"errors": ["Path: input/a.c"]}],
+                "files": [
+                    {"path": "a.c", "type": "file", "scan_errors": ["ERROR: timeout"]},
+                    {
+                        "path": "b.c",
+                        "type": "file",
+                        "detected_license_expression_spdx": "MIT",
+                    },
+                ],
+            }
+            Path(cmd[cmd.index("--json-pp") + 1]).write_text(json.dumps(report), encoding="utf-8")
+            return MagicMock(returncode=1)
+
+        with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
+            results = detect_licenses(["a.c", "b.c"])
+        self.assertEqual(results["a.c"]["scan_errors"], ["ERROR: timeout"])
+        self.assertEqual(results["b.c"]["detected_license_expression_spdx"], "MIT")
+
+    def test_attributed_error_for_a_nested_path_does_not_abort_the_run(self):
+        """The pointer's path can have more than one segment and still match correctly."""
+        Path("src").mkdir()
+        Path("src/a.c").write_text("x\n", encoding="utf-8")
+
+        def fake_run(cmd, **_kwargs):
+            report = {
+                "headers": [{"errors": ["Path: input/src/a.c"]}],
+                "files": [{"path": "src/a.c", "type": "file", "scan_errors": ["ERROR: timeout"]}],
+            }
+            Path(cmd[cmd.index("--json-pp") + 1]).write_text(json.dumps(report), encoding="utf-8")
+            return MagicMock(returncode=1)
+
+        with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
+            results = detect_licenses(["src/a.c"])
+        self.assertEqual(results["src/a.c"]["scan_errors"], ["ERROR: timeout"])
+
+    def test_wrong_root_pointer_is_not_mistaken_for_a_known_file(self):
+        """A pointer scancode would never actually write must not be matched by accident."""
+        Path("a.c").write_text("x\n", encoding="utf-8")
+
+        def fake_run(cmd, **_kwargs):
+            # scancode always writes "Path: input/<path>", since "input" is the
+            # directory detect_licenses() stages files under; a pointer under
+            # any other directory name is not one scancode would ever produce
+            # for this run, so it must still be treated as unattributed.
+            report = {
+                "headers": [{"errors": ["Path: other/a.c"]}],
+                "files": [{"path": "a.c", "type": "file", "scan_errors": ["ERROR: timeout"]}],
+            }
+            Path(cmd[cmd.index("--json-pp") + 1]).write_text(json.dumps(report), encoding="utf-8")
+            return MagicMock(returncode=1)
+
+        with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
+            with self.assertRaises(RuntimeError) as caught:
+                detect_licenses(["a.c"])
+        self.assertIn("Path: other/a.c", str(caught.exception))
+
+    def test_no_run_level_error_is_read_normally(self):
+        """A report with an empty or absent headers/errors still reads its files."""
+        Path("a.c").write_text("x\n", encoding="utf-8")
+        with scancode_mock_patcher({"a.c": "MIT"}):
+            results = detect_licenses(["a.c"])
+        self.assertEqual(results["a.c"]["detected_license_expression_spdx"], "MIT")
 
 
 class TestRepoLicenseChecker(TempCwdMixin, unittest.TestCase):
@@ -239,25 +344,6 @@ class TestRepoLicenseChecker(TempCwdMixin, unittest.TestCase):
         flagged, _ = self.run_checker({"Makefile": "GPL-2.0-only"})
         self.assertIn("Makefile", flagged)
 
-    def test_file_scancode_failed_on_blocks_with_reason(self):
-        """A file scancode failed on is reported as such, though scancode exits non-zero."""
-        Path("a.c").write_text("x\n", encoding="utf-8")
-
-        def fake_run(cmd, check=False, **_kwargs):
-            # scancode exits 1 when it times out on a file, yet still writes its
-            # report; subprocess.run raises on that exit only if check=True.
-            entry = {"path": "a.c", "type": "file", "scan_errors": ["ERROR: timeout\n"]}
-            Path(cmd[cmd.index("--json-pp") + 1]).write_text(
-                json.dumps({"files": [entry]}), encoding="utf-8"
-            )
-            if check:
-                raise subprocess.CalledProcessError(1, cmd)
-            return MagicMock(returncode=1)
-
-        with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
-            flagged, _ = RepoLicenseChecker(["a.c"], ALLOWED).run()
-        self.assertEqual(flagged["a.c"]["license_issues"], ["License scan failed: ERROR: timeout"])
-
     def test_file_scancode_skipped_is_treated_as_unlicensed(self):
         """A file absent from scancode's report has no license: only a source file is flagged."""
         for path in ("a.c", ".gitignore"):
@@ -265,6 +351,26 @@ class TestRepoLicenseChecker(TempCwdMixin, unittest.TestCase):
         with scancode_mock_patcher({}):
             flagged, _ = RepoLicenseChecker(["a.c", ".gitignore"], ALLOWED).run()
         self.assertEqual(list(flagged), ["a.c"])
+
+    def test_file_scancode_failed_on_blocks_with_reason(self):
+        """A file scancode failed on is reported as such, though scancode exits non-zero."""
+        Path("a.c").write_text("x\n", encoding="utf-8")
+
+        def fake_run(cmd, check=False, **_kwargs):
+            # scancode exits 1 when it times out on a file, yet still writes its
+            # report; subprocess.run raises on that exit only if check=True.
+            # It also adds a "Path: input/a.c" pointer to headers[0]["errors"]
+            # for the same file, which must not itself abort the run.
+            entry = {"path": "a.c", "type": "file", "scan_errors": ["ERROR: timeout\n"]}
+            report = {"headers": [{"errors": ["Path: input/a.c"]}], "files": [entry]}
+            Path(cmd[cmd.index("--json-pp") + 1]).write_text(json.dumps(report), encoding="utf-8")
+            if check:
+                raise subprocess.CalledProcessError(1, cmd)
+            return MagicMock(returncode=1)
+
+        with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
+            flagged, _ = RepoLicenseChecker(["a.c"], ALLOWED).run()
+        self.assertEqual(flagged["a.c"]["license_issues"], ["License scan failed: ERROR: timeout"])
 
     def test_no_files_skips_scancode(self):
         """With nothing to scan, scancode is not run at all."""
