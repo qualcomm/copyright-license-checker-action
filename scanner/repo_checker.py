@@ -4,6 +4,7 @@
 
 import json
 import os
+import posixpath
 import subprocess
 import tempfile
 from pathlib import Path
@@ -35,10 +36,13 @@ def detect_licenses(paths: list) -> dict:
     """
     Scan repository-relative files once and return results keyed by path.
 
-    Raise RuntimeError on staging failures or unattributed ScanCode errors.
+    Raise RuntimeError on staging failures, colliding paths, or unattributed
+    ScanCode errors.
     """
     if not paths:
         return {}
+
+    staged_paths = _staged_paths(paths)
 
     # Stage inside the checkout to support hardlinks. Nested mounts may still
     # prevent linking; the temporary directory is untracked and cleaned up.
@@ -90,7 +94,7 @@ def detect_licenses(paths: list) -> dict:
 
         files = _parsed_report(data)
 
-    return {entry["path"]: entry for entry in files}
+    return _results_by_original_path(files, staged_paths)
 
 
 def _parsed_report(data: dict) -> list:
@@ -106,6 +110,73 @@ def _parsed_report(data: dict) -> list:
         raise RuntimeError(f"scancode reported a run-level error: {reason}")
 
     return files
+
+
+# A stand-in for the staging root, used only to predict ScanCode's reported
+# path (see _predicted_reported_path). Any fixed, dot-free name would do.
+_PREDICTION_ROOT = "root"
+
+
+def _predicted_reported_path(path: str) -> str:
+    """
+    Predict the path ScanCode will report for a staged file.
+
+    ScanCode joins a file onto its scan root before reading a backslash as a
+    forward slash and collapsing the result with posixpath.normpath, so a
+    leading "\\" can merge with the root's own separator -- not just with
+    "\\", "." or ".." elsewhere in the same path. Raise rather than guess if
+    that collapses the path out of the root entirely.
+    """
+    combined = posixpath.normpath(f"{_PREDICTION_ROOT}/" + path.replace("\\", "/"))
+    prefix = _PREDICTION_ROOT + "/"
+    if not combined.startswith(prefix):
+        raise RuntimeError(f"'{path}' normalizes outside the staging root")
+    prefix_length = len(prefix)
+    return combined[prefix_length:]
+
+
+def _staged_paths(paths: list) -> dict:
+    """
+    Map each path as ScanCode will report it back to its original spelling.
+
+    ScanCode walks the real directory tree, so a file's real parent
+    directories are resources in their own right, each normalized on its
+    own (collapsing "..\\ok.mk" inside a file's own name can hide a parent
+    directory from the file's own reported path, while ScanCode still
+    visits that directory for real). Two different real paths -- two
+    files, a file and a parent directory, or an ancestor shared between
+    unrelated files -- that predict the same reported path leave ScanCode's
+    report unable to tell them apart. Fail rather than silently keep only
+    one of them.
+    """
+    staged_paths = {}
+    reported_paths = {}
+    for path in paths:
+        components = path.split("/")
+        for depth in range(1, len(components) + 1):
+            real_path = "/".join(components[:depth])
+            reported_path = _predicted_reported_path(real_path)
+            collision = reported_paths.get(reported_path)
+            if collision is not None and collision != real_path:
+                raise RuntimeError(
+                    f"'{real_path}' and '{collision}' both read as '{reported_path}'"
+                )
+            reported_paths[reported_path] = real_path
+            if depth == len(components):
+                staged_paths[reported_path] = path
+
+    return staged_paths
+
+
+def _results_by_original_path(files: list, staged_paths: dict) -> dict:
+    """Key file entries by the staged path, not the one ScanCode reports."""
+    results = {}
+    for entry in files:
+        original_path = staged_paths.get(entry["path"])
+        if original_path is None:
+            raise RuntimeError(f"scancode reported an unexpected path: {entry['path']!r}")
+        results[original_path] = entry
+    return results
 
 
 class RepoLicenseChecker:
