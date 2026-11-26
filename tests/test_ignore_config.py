@@ -102,6 +102,9 @@ class TestIgnoreConfigMatching(IgnoreConfigTestCase):
             "scanner/config.py",
             "scanner/license_scancode.py",
             "scanner/copyright_checker.py",
+            "src/copyright_license_checker/config.py",
+            "src/copyright_license_checker/license_scancode.py",
+            "src/copyright_license_checker/copyright_checker.py",
             "main.py",
         ):
             with self.subTest(file_path=file_path):

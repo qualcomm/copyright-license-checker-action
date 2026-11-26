@@ -187,7 +187,7 @@ class TestDetectLicensesBatch(ScancodeMockMixin, unittest.TestCase):
 
         checker = LicenseChecker(make_patch_obj([]), PERMISSIVE)
         with mock_patch(
-            "scanner.license_scancode.subprocess.run", side_effect=fake_run
+            "copyright_license_checker.license_scancode.subprocess.run", side_effect=fake_run
         ) as run_mock:
             checker.detect_licenses_batch(
                 [

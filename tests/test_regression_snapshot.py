@@ -18,6 +18,8 @@ the point of pinning them here first: they are the baseline that shows
 adding a second mode leaves the default path untouched.
 """
 
+# main.py replaces itself with the namespaced implementation at import time.
+# pylint: disable=no-member
 import contextlib
 import io
 import sys
@@ -69,7 +71,7 @@ class RegressionSnapshotTestCase(TempCwdMixin, unittest.TestCase):
             with mock_patch.object(sys, "argv", argv):
                 with contextlib.redirect_stdout(buffer):
                     with self.assertRaises(SystemExit) as caught:
-                        main.main()
+                        main.legacy_main()
         return buffer.getvalue(), caught.exception.code
 
 
