@@ -258,12 +258,124 @@ class TestDetectLicenses(TempCwdMixin, unittest.TestCase):
                 detect_licenses(["a.c"])
         self.assertIn("Path: other/a.c", str(caught.exception))
 
+    def test_backslash_in_a_filename_is_matched_to_the_original_path(self):
+        """A literal backslash (valid on Linux) must not make ScanCode's result unreachable."""
+        Path("a\\b.mk").write_text("x\n", encoding="utf-8")
+
+        def fake_run(cmd, **_kwargs):
+            # ScanCode reports every backslash in a path as a forward slash,
+            # even though the staged file is not actually nested.
+            entry = {"path": "a/b.mk", "type": "file", "detected_license_expression_spdx": "MIT"}
+            Path(cmd[cmd.index("--json-pp") + 1]).write_text(
+                json.dumps({"files": [entry]}), encoding="utf-8"
+            )
+            return MagicMock(returncode=0)
+
+        with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
+            results = detect_licenses(["a\\b.mk"])
+        self.assertEqual(results["a\\b.mk"]["detected_license_expression_spdx"], "MIT")
+
+    def test_unexpected_reported_path_raises(self):
+        """A path ScanCode reports that matches none of the staged files fails the scan."""
+        Path("a.c").write_text("x\n", encoding="utf-8")
+
+        def fake_run(cmd, **_kwargs):
+            entry = {"path": "other.c", "type": "file", "detected_license_expression_spdx": "MIT"}
+            Path(cmd[cmd.index("--json-pp") + 1]).write_text(
+                json.dumps({"files": [entry]}), encoding="utf-8"
+            )
+            return MagicMock(returncode=0)
+
+        with mock_patch(SUBPROCESS_RUN, side_effect=fake_run):
+            with self.assertRaises(RuntimeError) as caught:
+                detect_licenses(["a.c"])
+        self.assertIn("other.c", str(caught.exception))
+
     def test_no_run_level_error_is_read_normally(self):
         """A report with an empty or absent headers/errors still reads its files."""
         Path("a.c").write_text("x\n", encoding="utf-8")
         with scancode_mock_patcher({"a.c": "MIT"}):
             results = detect_licenses(["a.c"])
         self.assertEqual(results["a.c"]["detected_license_expression_spdx"], "MIT")
+
+
+class TestStagedPathCollisions(TempCwdMixin, unittest.TestCase):
+    """detect_licenses refuses to guess when two paths would collide in ScanCode's report."""
+
+    def test_colliding_backslash_and_forward_slash_paths_raise(self):
+        """Two distinct paths that read identically to ScanCode must not merge their results."""
+        Path("a").mkdir()
+        Path("a/b.mk").write_text("x\n", encoding="utf-8")
+        Path("a\\b.mk").write_text("y\n", encoding="utf-8")
+
+        with mock_patch(SUBPROCESS_RUN) as run:
+            with self.assertRaises(RuntimeError) as caught:
+                detect_licenses(["a/b.mk", "a\\b.mk"])
+        run.assert_not_called()
+        self.assertIn("a/b.mk", str(caught.exception))
+        self.assertIn("a\\b.mk", str(caught.exception))
+
+    def test_colliding_dot_segment_paths_raise(self):
+        """ScanCode also collapses "." and ".." segments, so those must collide too."""
+        Path("a").mkdir()
+        Path("a/b.mk").write_text("x\n", encoding="utf-8")
+        Path("a\\.\\b.mk").write_text("y\n", encoding="utf-8")
+
+        with mock_patch(SUBPROCESS_RUN) as run:
+            with self.assertRaises(RuntimeError) as caught:
+                detect_licenses(["a/b.mk", "a\\.\\b.mk"])
+        run.assert_not_called()
+        self.assertIn("a/b.mk", str(caught.exception))
+        self.assertIn("a\\.\\b.mk", str(caught.exception))
+
+    def test_leading_backslash_colliding_with_the_staging_root_raises(self):
+        """A leading backslash can merge with the staging root's own separator."""
+        Path("b.mk").write_text("x\n", encoding="utf-8")
+        Path("\\b.mk").write_text("y\n", encoding="utf-8")
+
+        with mock_patch(SUBPROCESS_RUN) as run:
+            with self.assertRaises(RuntimeError) as caught:
+                detect_licenses(["b.mk", "\\b.mk"])
+        run.assert_not_called()
+        self.assertIn("b.mk", str(caught.exception))
+        self.assertIn("\\b.mk", str(caught.exception))
+
+    def test_file_colliding_with_a_normalized_directory_name_raises(self):
+        """A file whose reported path is an ancestor of another's must not go unnoticed."""
+        Path("a").mkdir()
+        Path("a/b.mk").write_text("x\n", encoding="utf-8")
+        Path("a\\b.mk").mkdir()
+        Path("a\\b.mk/ok.mk").write_text("y\n", encoding="utf-8")
+
+        with mock_patch(SUBPROCESS_RUN) as run:
+            with self.assertRaises(RuntimeError) as caught:
+                detect_licenses(["a/b.mk", "a\\b.mk/ok.mk"])
+        run.assert_not_called()
+        self.assertIn("a/b.mk", str(caught.exception))
+
+    def test_path_escaping_the_staging_root_raises(self):
+        """A leading ".." can collapse a path out of the staging root entirely."""
+        Path("..\\b.mk").write_text("x\n", encoding="utf-8")
+
+        with mock_patch(SUBPROCESS_RUN) as run:
+            with self.assertRaises(RuntimeError) as caught:
+                detect_licenses(["..\\b.mk"])
+        run.assert_not_called()
+        self.assertIn("..\\b.mk", str(caught.exception))
+
+    def test_parent_directory_colliding_with_a_file_raises_even_if_the_leaf_does_not(self):
+        """A file's own real parent directory must be checked, not just its collapsed leaf path."""
+        Path("a").mkdir()
+        Path("a/b.mk").write_text("x\n", encoding="utf-8")
+        Path("a\\b.mk").mkdir()
+        Path("a\\b.mk/..\\ok.mk").write_text("y\n", encoding="utf-8")
+
+        with mock_patch(SUBPROCESS_RUN) as run:
+            with self.assertRaises(RuntimeError) as caught:
+                detect_licenses(["a/b.mk", "a\\b.mk/..\\ok.mk"])
+        run.assert_not_called()
+        self.assertIn("a/b.mk", str(caught.exception))
+        self.assertIn("a\\b.mk", str(caught.exception))
 
 
 class TestRepoLicenseChecker(TempCwdMixin, unittest.TestCase):
